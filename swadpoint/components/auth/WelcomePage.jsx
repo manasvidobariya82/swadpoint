@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef } from "react";
+import Link from "next/link";
 
 export default function LandingPage() {
   const router = useRouter();
@@ -66,31 +67,43 @@ export default function LandingPage() {
       title: "AR Menus",
       desc: "Customers see food before ordering.",
       icon: "📱",
+      link: "/features/ar-menus",
+      slug: "ar-menus",
     },
     {
       title: "POS Integration",
       desc: "Sync orders & payments seamlessly.",
       icon: "💳",
+      link: "/features/pos-integration",
+      slug: "pos-integration",
     },
     {
       title: "Order Automation",
       desc: "Streamline kitchen & delivery workflows.",
       icon: "🤖",
+      link: "/features/order-automation",
+      slug: "order-automation",
     },
     {
       title: "Customer Analytics",
       desc: "Insights for smarter business decisions.",
       icon: "📊",
+      link: "/features/customer-analytics",
+      slug: "customer-analytics",
     },
     {
       title: "Multi-Outlet Support",
       desc: "Manage all outlets from one dashboard.",
       icon: "🏪",
+      link: "/features/multi-outlet-support",
+      slug: "multi-outlet-support",
     },
     {
       title: "Cloud Dashboard",
       desc: "Access reports anytime, anywhere.",
       icon: "☁️",
+      link: "/features/cloud-dashboard",
+      slug: "cloud-dashboard",
     },
   ];
 
@@ -162,12 +175,12 @@ export default function LandingPage() {
             >
               🚀 Get Started Free
             </button>
-            <button
+            {/* <button
               onClick={() => router.push("/demo")}
               className="px-12 py-4 bg-white/10 backdrop-blur-sm border-2 border-white/30 hover:bg-white/20 text-white rounded-full font-semibold text-lg transition-all duration-300 hover:shadow-lg"
             >
               📅 Request a Demo
-            </button>
+            </button> */}
           </div>
 
           {/* Trust badge */}
@@ -233,10 +246,10 @@ export default function LandingPage() {
                       className="w-24 h-24 object-contain"
                     />{" "}
                   </div>
-                  <div className="mt-4 text-center">
+                  {/* <div className="mt-4 text-center">
                     <div className="h-4 bg-gradient-to-r from-gray-200 to-gray-300 rounded w-20 mx-auto mb-2"></div>
                     <div className="h-3 bg-gradient-to-r from-gray-100 to-gray-200 rounded w-16 mx-auto"></div>
-                  </div>
+                  </div> */}
                 </div>
               ))}
             </div>
@@ -400,7 +413,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ================= BENEFITS SECTION ================= */}
+      {/* ================= BENEFITS SECTION (WITH LINKS) ================= */}
       <section className="py-28 bg-gradient-to-b from-white to-gray-50">
         <div className="max-w-7xl mx-auto px-6">
           <div className="text-center mb-16">
@@ -430,9 +443,12 @@ export default function LandingPage() {
                 </h3>
                 <p className="text-gray-600 leading-relaxed">{benefit.desc}</p>
                 <div className="mt-6 pt-6 border-t border-gray-100">
-                  <span className="text-blue-600 font-semibold text-sm">
+                  <Link
+                    href={benefit.link}
+                    className="text-blue-600 font-semibold text-sm hover:text-blue-800 transition-colors inline-flex items-center gap-1"
+                  >
                     Learn more →
-                  </span>
+                  </Link>
                 </div>
               </div>
             ))}
@@ -496,9 +512,12 @@ export default function LandingPage() {
           </div>
 
           <div className="mt-12 text-center">
-            <button className="text-blue-600 hover:text-blue-700 font-semibold text-lg">
+            <Link
+              href="/faq"
+              className="text-blue-600 hover:text-blue-700 font-semibold text-lg inline-flex items-center gap-1"
+            >
               View all FAQs →
-            </button>
+            </Link>
           </div>
         </div>
       </section>
@@ -532,12 +551,12 @@ export default function LandingPage() {
             >
               🚀 Start 14-Day Free Trial
             </button>
-            <button
+            {/* <button
               onClick={() => router.push("/demo")}
               className="px-12 py-4 bg-white/10 backdrop-blur-sm border-2 border-white/20 hover:bg-white/20 rounded-full font-semibold text-lg transition-all duration-300 flex items-center gap-3"
             >
               📞 Book a Personalized Demo
-            </button>
+            </button> */}
           </div>
 
           <div className="mt-12 text-gray-400 text-sm">

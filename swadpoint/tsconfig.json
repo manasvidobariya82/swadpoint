@@ -29,6 +29,6 @@
     ".next/types/**/*.ts",
     ".next/dev/types/**/*.ts",
     "**/*.mts"
-, "app/page.js", "app/(dashboard)/dashboard/menu/page.jsx"  ],
+, "app/page.js", "app/(dashboard)/dashboard/table-managment/page.jsx"  ],
   "exclude": ["node_modules"]
 }

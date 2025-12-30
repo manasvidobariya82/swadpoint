@@ -53,7 +53,7 @@ import { useEffect, useState } from "react";
 const menu = [
   { name: "Dashboard", path: "/dashboard" },
   { name: "Customers", path: "/dashboard/customers" },
-  { name: "Menu", path: "/dashboard/menu" },
+  { name: "table-managment", path: "/dashboard/table-managment" },
   { name: "Orders", path: "/dashboard/orders" },
   // 🔽 Reservation Dropdown
   {
@@ -74,11 +74,15 @@ const menu = [
   { name: "Billing", path: "/dashboard/billing" },
   { name: "Take-Order", path: "/dashboard/Take-Order" },
   { name: "Offers", path: "/dashboard/offers" },
-  { name: "AR-menu", path: "/dashboard/AR-Menu" },
+  { name: "menu", path: "/dashboard/menu" },
+
+  { name: "AR-Menu", path: "/dashboard/ar-menu" },
   { name: "Inventory", path: "/dashboard/inventory" },
   { name: "Reports", path: "/dashboard/reports" },
   { name: "Settings", path: "/dashboard/settings" },
   { name: "My Account", path: "/dashboard/my-account" },
+  { name: "logout", path: "/dashboard/logout" },
+  // { name: "profile", path: "/dashboard/profile" },
 ];
 
 export default function Sidebar() {

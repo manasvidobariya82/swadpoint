@@ -4,17 +4,37 @@ import { useEffect, useState } from "react";
 import QRCode from "react-qr-code";
 import { toast, Toaster } from "react-hot-toast";
 import { Copy, ExternalLink, Trash2 } from "lucide-react";
-import { getTables, saveTables } from "@/helper/storage";
+import { getMenu, getTables, saveTables } from "@/helper/storage";
 
 export default function TablesPage() {
   const [tables, setTables] = useState([]);
+  const [menuItems, setMenuItems] = useState([]);
   const [tableNo, setTableNo] = useState("");
   const [baseUrl, setBaseUrl] = useState("");
 
   useEffect(() => {
     setBaseUrl(window.location.origin);
     setTables(getTables());
+    setMenuItems(getMenu());
   }, []);
+
+  const buildMenuUrl = (tableNumber) => {
+    const origin =
+      baseUrl || (typeof window !== "undefined" ? window.location.origin : "");
+    const params = new URLSearchParams();
+    params.set("table", tableNumber);
+
+    if (menuItems.length > 0) {
+      const compactItems = menuItems.map((item) => ({
+        id: item.id,
+        name: item.name,
+        price: Number(item.price) || 0,
+      }));
+      params.set("items", JSON.stringify(compactItems));
+    }
+
+    return `${origin}/menu?${params.toString()}`;
+  };
 
   const persistTables = (nextTables) => {
     setTables(nextTables);
@@ -33,9 +53,7 @@ export default function TablesPage() {
       return;
     }
 
-    const qrUrl = `${baseUrl}/menu?table=${encodeURIComponent(
-      normalizedTable
-    )}`;
+    const qrUrl = buildMenuUrl(normalizedTable);
 
     const nextTables = [
       ...tables,
@@ -97,7 +115,7 @@ export default function TablesPage() {
 
           <p className="mt-3 text-sm text-gray-500">
             QR URL format: {baseUrl || "https://your-domain.com"}/menu?table=
-            TABLE_NO
+            TABLE_NO&items=[...]
           </p>
         </div>
 
@@ -107,47 +125,51 @@ export default function TablesPage() {
           </div>
         ) : (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-            {tables.map((table) => (
-              <div key={table.id} className="rounded-xl bg-white p-6 shadow">
-                <div className="mb-4 flex items-center justify-between">
-                  <h2 className="text-lg font-bold text-gray-900">
-                    Table {table.tableNo}
-                  </h2>
-                  <button
-                    onClick={() => deleteTable(table.id)}
-                    className="text-red-600"
-                    aria-label={`Delete table ${table.tableNo}`}
-                  >
-                    <Trash2 size={18} />
-                  </button>
-                </div>
+            {tables.map((table) => {
+              const currentUrl = buildMenuUrl(table.tableNo);
 
-                <div className="mb-4 flex justify-center rounded-lg border p-4">
-                  <QRCode value={table.qrUrl} size={170} />
-                </div>
+              return (
+                <div key={table.id} className="rounded-xl bg-white p-6 shadow">
+                  <div className="mb-4 flex items-center justify-between">
+                    <h2 className="text-lg font-bold text-gray-900">
+                      Table {table.tableNo}
+                    </h2>
+                    <button
+                      onClick={() => deleteTable(table.id)}
+                      className="text-red-600"
+                      aria-label={`Delete table ${table.tableNo}`}
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
 
-                <div className="mb-4 break-all rounded bg-gray-100 p-2 text-xs text-gray-600">
-                  {table.qrUrl}
-                </div>
+                  <div className="mb-4 flex justify-center rounded-lg border p-4">
+                    <QRCode value={currentUrl} size={170} />
+                  </div>
 
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => copyURL(table.qrUrl)}
-                    className="flex items-center justify-center gap-1 rounded bg-gray-200 p-2 text-sm font-medium text-gray-800 hover:bg-gray-300"
-                  >
-                    <Copy size={14} />
-                    Copy
-                  </button>
-                  <button
-                    onClick={() => openMenu(table.qrUrl)}
-                    className="flex items-center justify-center gap-1 rounded bg-green-600 p-2 text-sm font-medium text-white hover:bg-green-700"
-                  >
-                    <ExternalLink size={14} />
-                    Test
-                  </button>
+                  <div className="mb-4 break-all rounded bg-gray-100 p-2 text-xs text-gray-600">
+                    {currentUrl}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => copyURL(currentUrl)}
+                      className="flex items-center justify-center gap-1 rounded bg-gray-200 p-2 text-sm font-medium text-gray-800 hover:bg-gray-300"
+                    >
+                      <Copy size={14} />
+                      Copy
+                    </button>
+                    <button
+                      onClick={() => openMenu(currentUrl)}
+                      className="flex items-center justify-center gap-1 rounded bg-green-600 p-2 text-sm font-medium text-white hover:bg-green-700"
+                    >
+                      <ExternalLink size={14} />
+                      Test
+                    </button>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

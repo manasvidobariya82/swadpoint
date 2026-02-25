@@ -6,48 +6,43 @@ import {
   Wallet,
   ClipboardList,
   Bell,
-  Eye,
   Table,
+  ShoppingCart,
 } from "lucide-react";
 import { useState } from "react";
 
 /* =======================
-   STATS DATA
+   FILTER DATA
 ======================= */
-const stats = [
-  { title: "Today Sales", value: "₹0.00", icon: Wallet, color: "bg-green-500" },
-  {
-    title: "Total Orders (Today)",
-    value: "0",
-    icon: ClipboardList,
-    color: "bg-indigo-500",
+const dashboardData = {
+  Today: {
+    sales: 1200,
+    totalOrders: 25,
+    onlineOrders: 14,
+    pending: 5,
+    tables: 8,
+    customers: 6,
+    dineIn: 11,
   },
-  {
-    title: "Total Orders (Month)",
-    value: "0",
-    icon: ClipboardList,
-    color: "bg-blue-500",
+  "This Week": {
+    sales: 8400,
+    totalOrders: 140,
+    onlineOrders: 75,
+    pending: 12,
+    tables: 15,
+    customers: 22,
+    dineIn: 65,
   },
-  {
-    title: "Pending Orders",
-    value: "0",
-    icon: ShoppingBag,
-    color: "bg-orange-500",
+  "This Month": {
+    sales: 32000,
+    totalOrders: 620,
+    onlineOrders: 350,
+    pending: 20,
+    tables: 40,
+    customers: 85,
+    dineIn: 270,
   },
-  {
-    title: "Active Tables",
-    value: "0",
-    icon: Table,
-    color: "bg-teal-500",
-  },
-  { title: "AR Views", value: "0", icon: Eye, color: "bg-purple-500" },
-  {
-    title: "New Customers",
-    value: "0",
-    icon: Users,
-    color: "bg-rose-500",
-  },
-];
+};
 
 /* =======================
    MAIN COMPONENT
@@ -55,13 +50,53 @@ const stats = [
 export default function DashboardOverview() {
   const [filter, setFilter] = useState("Today");
 
-  // Dine-In vs Online (future API)
-  const dineInOrders = 18;
-  const onlineOrders = 32;
+  const data = dashboardData[filter] || dashboardData["Today"];
+
+  const dineInOrders = data.dineIn;
+  const onlineOrders = data.onlineOrders;
   const total = dineInOrders + onlineOrders || 1;
 
   const dineInPercent = Math.round((dineInOrders / total) * 100);
   const onlinePercent = Math.round((onlineOrders / total) * 100);
+
+  const stats = [
+    {
+      title: "Sales",
+      value: `₹${data.sales}`,
+      icon: Wallet,
+      color: "bg-green-500",
+    },
+    {
+      title: "Total Orders",
+      value: data.totalOrders,
+      icon: ClipboardList,
+      color: "bg-indigo-500",
+    },
+    {
+      title: "Online Orders",
+      value: data.onlineOrders,
+      icon: ShoppingCart,
+      color: "bg-blue-500",
+    },
+    {
+      title: "Pending Orders",
+      value: data.pending,
+      icon: ShoppingBag,
+      color: "bg-orange-500",
+    },
+    {
+      title: "Active Tables",
+      value: data.tables,
+      icon: Table,
+      color: "bg-teal-500",
+    },
+    {
+      title: "New Customers",
+      value: data.customers,
+      icon: Users,
+      color: "bg-rose-500",
+    },
+  ];
 
   return (
     <div className="space-y-6">
@@ -77,7 +112,6 @@ export default function DashboardOverview() {
           <option>Today</option>
           <option>This Week</option>
           <option>This Month</option>
-          <option>Custom</option>
         </select>
       </div>
 
@@ -111,7 +145,7 @@ export default function DashboardOverview() {
             Dine-In vs Online Orders
           </h3>
           <span className="text-xs px-3 py-1 rounded-full bg-indigo-50 text-indigo-600">
-            Today
+            {filter}
           </span>
         </div>
 
@@ -168,7 +202,7 @@ export default function DashboardOverview() {
             <Bell size={18} /> Notifications
           </h3>
           <ul className="space-y-2 text-sm text-gray-600">
-            <li>New order received</li>
+            <li>New online order received</li>
             <li>Table 4 reserved</li>
             <li>Low stock alert</li>
           </ul>

@@ -5,7 +5,7 @@ import Header from "../../components/ui/Header";
 import Sidebar from "./Sidebar";
 
 export default function DashboardLayout({ children }) {
-  const user = localStorage.getItem("currentUser");
+  const user = localStorage?.getItem("currentUser");
   useEffect(() => {
     if (!user) {
       router.push("/login");

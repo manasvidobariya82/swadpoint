@@ -1,9 +1,3 @@
-const categories = [
-  { id: 1, name: "Breakfast", desc: "Breakfast category" },
-  { id: 2, name: "Appetizers", desc: "Appetizers category" },
-  { id: 3, name: "Salads", desc: "Salads category" },
-];
-
 export default function Categories() {
   return (
     <div className="space-y-4">
@@ -13,8 +7,6 @@ export default function Categories() {
           + Add New Category
         </button>
       </div>
-
-      {/* <Table data={categories} /> */}
     </div>
   );
 }

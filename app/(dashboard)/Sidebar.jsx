@@ -1,49 +1,3 @@
-// "use client";
-
-// import Link from "next/link";
-// import { usePathname } from "next/navigation";
-
-// const menu = [
-//   { name: "Dashboard", path: "/dashboard" },
-//   // { name: "Take Orders", path: "/dashboard/orders" },
-//   { name: "Menu", path: "/dashboard/menu" },
-//   { name: "Customers", path: "/dashboard/customers" },
-//   { name: "users", path: "/dashboard/users" },
-//   { name: "Payment-Gateway", path: "/dashboard/Payment-Gateway" },
-//   { name: "Take-Order", path: "/dashboard/Take-Order" },
-//   { name: "promotions-marketing", path: "/dashboard/promotions-marketing" },
-//   { name: "orders", path: "/dashboard/orders" },
-//   { name: "Reservation", path: "/dashboard/Reservation" },
-//   { name: "Settings", path: "/dashboard/settings" },
-//   { name: "My account", path: "/dashboard/my-account" },
-// ];
-
-// export default function Sidebar() {
-//   const pathname = usePathname();
-
-//   return (
-//     <div className="p-6">
-//       <h1 className="text-xl font-bold text-blue-600 mb-8">SwadPoint</h1>
-
-//       <nav className="space-y-2">
-//         {menu.map((item) => (
-//           <Link
-//             key={item.path}
-//             href={item.path}
-//             className={`block px-4 py-2 rounded-lg transition ${
-//               pathname === item.path
-//                 ? "bg-blue-100 text-blue-600 font-semibold"
-//                 : "text-gray-700 hover:bg-gray-100"
-//             }`}
-//           >
-//             {item.name}
-//           </Link>
-//         ))}
-//       </nav>
-//     </div>
-//   );
-// }
-
 "use client";
 
 import Link from "next/link";
@@ -52,10 +6,11 @@ import { useEffect, useState } from "react";
 
 const menu = [
   { name: "Dashboard", path: "/dashboard" },
+  { name: "Orders", path: "/dashboard/orders" },
+
   { name: "Customers", path: "/dashboard/customers" },
   { name: "table-managment", path: "/dashboard/table-managment" },
-  { name: "Orders", path: "/dashboard/orders" },
-  // 🔽 Reservation Dropdown
+            // 🔽 Reservation Dropdown
   {
     name: "Reservation",
     basePath: "/dashboard/reservation",
@@ -72,16 +27,16 @@ const menu = [
   },
 
   { name: "Billing", path: "/dashboard/billing" },
-  { name: "Take-Order", path: "/dashboard/Take-Order" },
+  // { name: "Take-Order", path: "/dashboard/Take-Order" },
   { name: "Offers", path: "/dashboard/offers" },
   { name: "menu", path: "/dashboard/menu" },
 
-  { name: "AR-Menu", path: "/dashboard/ar-menu" },
+  // { name: "AR-Menu", path: "/dashboard/ar-menu" },
   { name: "Inventory", path: "/dashboard/inventory" },
   { name: "Reports", path: "/dashboard/reports" },
   { name: "Settings", path: "/dashboard/settings" },
   { name: "My Account", path: "/dashboard/my-account" },
-  { name: "logout", path: "/dashboard/logout" },
+  // { name: "logout", path: "/dashboard/logout" },
   // { name: "profile", path: "/dashboard/profile" },
 ];
 

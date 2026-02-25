@@ -31,76 +31,76 @@ export default function LandingPage() {
 
   const arFeatures = [
     {
-      title: "3D Food Visualization",
-      desc: "Improve customer confidence with real previews.",
-      icon: "👁️",
+      title: "Digital Menu System",
+      desc: "Real-time menu updates with QR-based ordering.",
+      icon: "📱", // Mobile / QR based system
       color: "bg-gradient-to-r from-blue-50 to-cyan-50",
     },
     {
-      title: "Higher Customer Trust",
-      desc: "Boost trust by showing exactly what they'll get.",
-      icon: "🤝",
+      title: "Live Order Tracking",
+      desc: "Customers track orders from preparing to completed.",
+      icon: "📦", // Order tracking / delivery
       color: "bg-gradient-to-r from-emerald-50 to-green-50",
     },
     {
-      title: "Better Order Accuracy",
-      desc: "Reduce errors and make ordering seamless.",
-      icon: "🎯",
+      title: "Accurate Smart Ordering",
+      desc: "Reduce manual errors with automated order flow.",
+      icon: "✅", // Accuracy / correctness
       color: "bg-gradient-to-r from-amber-50 to-orange-50",
     },
     {
-      title: "Interactive Menus",
-      desc: "Let customers explore dishes virtually.",
-      icon: "🔄",
+      title: "Admin Dashboard Control",
+      desc: "Manage menu, orders, and payments in one place.",
+      icon: "🛠️", // Control / management tools
       color: "bg-gradient-to-r from-purple-50 to-violet-50",
     },
     {
-      title: "Custom AR Branding",
-      desc: "Personalize AR experiences for your restaurant.",
-      icon: "🎨",
+      title: "Commission-Free Platform",
+      desc: "Full control without third-party commission fees.",
+      icon: "💰", // Money / no commission
       color: "bg-gradient-to-r from-pink-50 to-rose-50",
     },
   ];
 
   const benefits = [
     {
-      title: "AR Menus",
-      desc: "Customers see food before ordering.",
+      title: "Smart Digital Menu",
+      desc: "QR-based interactive menu with real-time updates.",
       icon: "📱",
       link: "/features/ar-menus",
       slug: "ar-menus",
     },
     {
-      title: "POS Integration",
-      desc: "Sync orders & payments seamlessly.",
+      title: "Smart POS Integration",
+      desc: "Sync orders, payments, and billing seamlessly.",
       icon: "💳",
       link: "/features/pos-integration",
       slug: "pos-integration",
     },
     {
-      title: "Order Automation",
-      desc: "Streamline kitchen & delivery workflows.",
+      title: "Order & Kitchen Automation",
+      desc: "Automate order flow from customer to kitchen.",
       icon: "🤖",
       link: "/features/order-automation",
       slug: "order-automation",
     },
     {
-      title: "Customer Analytics",
-      desc: "Insights for smarter business decisions.",
+      title: "Real-Time Customer Insights",
+      desc: "Track sales, behavior, and performance instantly.",
       icon: "📊",
       link: "/features/customer-analytics",
       slug: "customer-analytics",
     },
     {
-      title: "Multi-Outlet Support",
-      desc: "Manage all outlets from one dashboard.",
+      title: "Multi-Outlet Management",
+      desc: "Control all branches from one centralized dashboard.",
       icon: "🏪",
       link: "/features/multi-outlet-support",
       slug: "multi-outlet-support",
     },
     {
-      title: "Cloud Dashboard",
-      desc: "Access reports anytime, anywhere.",
+      title: "Cloud-Based Dashboard",
+      desc: "Access your restaurant data anytime, anywhere.",
       icon: "☁️",
       link: "/features/cloud-dashboard",
       slug: "cloud-dashboard",
@@ -121,8 +121,12 @@ export default function LandingPage() {
       a: "No. Works directly from the browser.",
     },
     {
-      q: "Is AR supported on all phones?",
-      a: "AR works on most modern smartphones.",
+      q: "How does order tracking work?",
+      a: "Orders are updated in real-time from “Preparing” to “Completed,” visible to both customers and admins.",
+    },
+    {
+      q: "Is the system cloud-based?",
+      a: "Yes. You can access your dashboard anytime, anywhere from any device.",
     },
   ];
 
@@ -154,13 +158,13 @@ export default function LandingPage() {
           <h1 className="text-5xl md:text-7xl font-bold leading-tight mb-6">
             Transform Your Restaurant with
             <span className="block text-transparent bg-clip-text bg-gradient-to-r from-cyan-400 to-blue-400 mt-2">
-              AR & Smart Automation
+              Smart Automation
             </span>
           </h1>
 
           <p className="text-xl md:text-2xl text-gray-200 max-w-3xl mx-auto mb-12 leading-relaxed">
-            SwadPoint unites restaurants, customers, and operations on one
-            modern,
+            SwadPoint connects restaurants, customers, and operations on one
+            seamless,
             <span className="font-semibold text-white">
               {" "}
               commission-free platform
@@ -282,14 +286,14 @@ export default function LandingPage() {
           <div className="text-center mb-16">
             <div className="inline-block mb-4 px-4 py-2 bg-gradient-to-r from-blue-500 to-cyan-500 rounded-full">
               <span className="text-sm font-semibold text-white">
-                ✨ AR POWERED
+                ✨ SMART AUTOMATION
               </span>
             </div>
             <h2 className="text-4xl font-bold text-gray-900 mb-6">
-              Augmented Reality Features
+              Smart Automation Features
             </h2>
             <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-              Transform customer experience with cutting-edge AR technology
+              Transform customer experience with smart digital automation
             </p>
           </div>
 
@@ -317,7 +321,7 @@ export default function LandingPage() {
             <div>
               <div className="inline-block mb-6 px-4 py-2 bg-gradient-to-r from-emerald-500 to-green-500 rounded-full">
                 <span className="text-sm font-semibold text-white">
-                  📊 SMART DASHBOARD
+                  📊 SMART AUTOMATION
                 </span>
               </div>
               <h2 className="text-4xl font-bold text-gray-900 mb-8 leading-tight">
@@ -327,8 +331,8 @@ export default function LandingPage() {
                 </span>
               </h2>
               <p className="text-xl text-gray-600 mb-10 leading-relaxed">
-                Manage menus, orders, payments, and analytics from one intuitive
-                interface designed for modern restaurants.
+                Manage menus, orders, payments, and analytics from one powerful
+                platform designed for modern restaurants.
               </p>
 
               <div className="space-y-6">
@@ -338,10 +342,10 @@ export default function LandingPage() {
                   </div>
                   <div>
                     <h4 className="font-bold text-lg text-gray-900">
-                      AR Digital Menus
+                      Smart Digital Menus
                     </h4>
                     <p className="text-gray-600">
-                      Interactive 3D menus that engage customers
+                      QR-based ordering with real-time updates.{" "}
                     </p>
                   </div>
                 </div>
@@ -355,7 +359,7 @@ export default function LandingPage() {
                       Smart POS Integration
                     </h4>
                     <p className="text-gray-600">
-                      Seamless payment and order management
+                      Seamless order and payment management.{" "}
                     </p>
                   </div>
                 </div>
@@ -369,7 +373,7 @@ export default function LandingPage() {
                       Real-Time Analytics
                     </h4>
                     <p className="text-gray-600">
-                      Data-driven insights for better decisions
+                      Data-driven insights for smarter decisions.{" "}
                     </p>
                   </div>
                 </div>
@@ -424,8 +428,8 @@ export default function LandingPage() {
               </span>
             </h2>
             <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-              Everything you need to run a successful food business in one
-              platform
+              Everything you need to manage and grow your restaurant — all in
+              one smart platform.
             </p>
           </div>
 
@@ -447,7 +451,7 @@ export default function LandingPage() {
                     href={benefit.link}
                     className="text-blue-600 font-semibold text-sm hover:text-blue-800 transition-colors inline-flex items-center gap-1"
                   >
-                    Learn more →
+                    {/* Learn more → */}
                   </Link>
                 </div>
               </div>
@@ -461,20 +465,20 @@ export default function LandingPage() {
         <div className="max-w-7xl mx-auto px-6">
           <div className="grid md:grid-cols-4 gap-8 text-center">
             <div className="p-8">
-              <div className="text-5xl font-bold mb-2">500+</div>
-              <div className="text-blue-100">Restaurants</div>
+              <div className="text-5xl font-bold mb-2">100+</div>
+              <div className="text-blue-100">Active Users</div>
             </div>
             <div className="p-8">
-              <div className="text-5xl font-bold mb-2">45%</div>
-              <div className="text-blue-100">Avg. Sales Growth</div>
+              <div className="text-5xl font-bold mb-2">30%</div>
+              <div className="text-blue-100">Faster Order Processing</div>
             </div>
             <div className="p-8">
-              <div className="text-5xl font-bold mb-2">99.9%</div>
-              <div className="text-blue-100">Uptime</div>
+              <div className="text-5xl font-bold mb-2">99%</div>
+              <div className="text-blue-100">System Reliability</div>
             </div>
             <div className="p-8">
               <div className="text-5xl font-bold mb-2">24/7</div>
-              <div className="text-blue-100">Support</div>
+              <div className="text-blue-100">Smart Monitoring</div>
             </div>
           </div>
         </div>
@@ -488,7 +492,7 @@ export default function LandingPage() {
               Frequently Asked Questions
             </h2>
             <p className="text-xl text-gray-600">
-              Everything you need to know about SwadPoint
+              Everything you need to know about SwadPoint{" "}
             </p>
           </div>
 
@@ -502,9 +506,7 @@ export default function LandingPage() {
                   <h4 className="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors">
                     {item.q}
                   </h4>
-                  <span className="text-2xl text-gray-400 group-hover:text-blue-500 transition-colors">
-                    +
-                  </span>
+                  <span className="text-2xl text-gray-400 group-hover:text-blue-500 transition-colors"></span>
                 </div>
                 <p className="mt-4 text-gray-600 leading-relaxed">{item.a}</p>
               </div>
@@ -516,54 +518,95 @@ export default function LandingPage() {
               href="/faq"
               className="text-blue-600 hover:text-blue-700 font-semibold text-lg inline-flex items-center gap-1"
             >
-              View all FAQs →
+              {/* View all FAQs → */}
             </Link>
           </div>
         </div>
       </section>
 
-      {/* ================= FINAL CTA ================= */}
-      <section className="py-28 bg-gradient-to-br from-gray-900 to-black text-white relative overflow-hidden">
-        {/* Background elements */}
-        <div className="absolute inset-0 opacity-10">
-          <div className="absolute top-20 left-20 w-96 h-96 bg-blue-500 rounded-full blur-3xl"></div>
-          <div className="absolute bottom-20 right-20 w-96 h-96 bg-purple-500 rounded-full blur-3xl"></div>
+      {/* ================= UPDATED FOOTER ================= */}
+      <footer className="bg-gradient-to-br from-gray-950 via-gray-900 to-black text-white pt-24 pb-10 relative overflow-hidden">
+        {/* Soft Background Glow */}
+        <div className="absolute inset-0 opacity-20 pointer-events-none">
+          <div className="absolute top-10 left-10 w-80 h-80 bg-blue-500 rounded-full blur-3xl"></div>
+          <div className="absolute bottom-10 right-10 w-80 h-80 bg-purple-500 rounded-full blur-3xl"></div>
         </div>
 
-        <div className="relative z-10 max-w-4xl mx-auto px-6 text-center">
-          <div className="inline-block mb-6 px-6 py-3 bg-gradient-to-r from-blue-500/20 to-cyan-500/20 backdrop-blur-sm rounded-full border border-white/10">
-            <span className="text-sm font-semibold">🎉 LIMITED TIME OFFER</span>
+        <div className="relative z-10 max-w-7xl mx-auto px-6">
+          {/* Main Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-14">
+            {/* Brand Section */}
+            <div>
+              <h3 className="text-3xl font-bold text-cyan-400 mb-5">
+                SwadPoint 🍽️
+              </h3>
+              <p className="text-gray-400 leading-relaxed mb-6">
+                Empowering restaurants with smart automation and digital
+                control. Simplify operations. Increase efficiency. Grow smarter.
+              </p>
+            </div>
+            {/* Quick Links */}
+            <div>
+              <h4 className="text-xl font-semibold mb-6">Quick Links</h4>
+              <ul className="space-y-4 text-gray-400">
+                {[
+                  { name: "Home", path: "/Header" },
+                  { name: "Features", path: "/features" },
+                  { name: "Plan", path: "/plan" },
+                  { name: "About Us", path: "/about-us" },
+                ].map((item, i) => (
+                  <li key={i}>
+                    <Link
+                      href={item.path}
+                      className="hover:text-cyan-400 transition-colors duration-300"
+                    >
+                      {item.name}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            {/* Contact */}
+            <div>
+              <h4 className="text-xl font-semibold mb-6">Contact</h4>
+              <ul className="space-y-4 text-gray-400">
+                <li>📍 Surat, Gujarat</li>
+                <li>📞 +91 98765 43210</li>
+                <li>📧 support@swadpoint.com</li>
+                <li>🕒 Mon – Sat | 10:00 AM – 11:00 PM</li>
+              </ul>
+            </div>
+            {/* Newsletter */}
+            <div>
+              <h4 className="text-xl font-semibold mb-6">Stay Updated</h4>
+              <p className="text-gray-400 mb-6">
+                Subscribe to receive product updates, feature releases, and
+                platform news.{" "}
+              </p>
+
+              <div className="flex overflow-hidden rounded-full border border-white/20">
+                <input
+                  type="email"
+                  placeholder="Enter your email"
+                  className="px-5 py-3 bg-white/10 text-sm focus:outline-none w-full"
+                />
+                <button className="px-6 bg-gradient-to-r from-blue-500 to-cyan-500 font-semibold hover:opacity-90 transition-all">
+                  Subscribe
+                </button>
+              </div>
+
+              {/* Payment Icons */}
+              <div className="flex gap-4 mt-6 text-gray-400 text-xl"></div>
+            </div>
           </div>
 
-          <h2 className="text-4xl md:text-5xl font-bold mb-8 leading-tight">
-            Ready to Transform Your Restaurant?
-          </h2>
-
-          <p className="text-xl text-gray-300 mb-12 max-w-2xl mx-auto">
-            Join hundreds of successful restaurants using SwadPoint to grow
-            their business with AR-powered technology.
-          </p>
-
-          <div className="flex flex-wrap justify-center gap-6">
-            <button
-              onClick={() => router.push("/signup")}
-              className="px-12 py-4 bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 rounded-full font-bold text-lg transition-all duration-300 transform hover:scale-105 hover:shadow-2xl shadow-lg flex items-center gap-3"
-            >
-              🚀 Start 14-Day Free Trial
-            </button>
-            {/* <button
-              onClick={() => router.push("/demo")}
-              className="px-12 py-4 bg-white/10 backdrop-blur-sm border-2 border-white/20 hover:bg-white/20 rounded-full font-semibold text-lg transition-all duration-300 flex items-center gap-3"
-            >
-              📞 Book a Personalized Demo
-            </button> */}
-          </div>
-
-          <div className="mt-12 text-gray-400 text-sm">
-            No credit card required • Cancel anytime • 24/7 support included
+          {/* Divider */}
+          <div className="border-t border-white/10 mt-16 pt-6 text-center text-gray-500 text-sm">
+            © {new Date().getFullYear()} SwadPoint Technologies. All rights
+            reserved.
           </div>
         </div>
-      </section>
+      </footer>
     </div>
   );
 }

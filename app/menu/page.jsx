@@ -236,10 +236,11 @@
 
 "use client";
 
+import { Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 
-export default function CustomerMenu() {
+function CustomerMenuContent() {
   const searchParams = useSearchParams();
   const table = searchParams.get("table");
 
@@ -285,5 +286,13 @@ export default function CustomerMenu() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function CustomerMenu() {
+  return (
+    <Suspense fallback={<div className="min-h-screen bg-gray-100 p-6" />}>
+      <CustomerMenuContent />
+    </Suspense>
   );
 }

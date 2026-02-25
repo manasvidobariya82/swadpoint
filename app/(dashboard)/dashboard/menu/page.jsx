@@ -10,13 +10,46 @@ const EMPTY_FORM = {
   category: "Main Course",
 };
 
+const parseItemsQuery = (value) => {
+  if (!value) return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .filter((item) => item && typeof item === "object")
+      .map((item, index) => ({
+        id: item.id || `query-item-${index}`,
+        name: String(item.name || "").trim(),
+        description: String(item.description || "").trim(),
+        category: String(item.category || "Main Course"),
+        price: Number(item.price) || 0,
+      }))
+      .filter((item) => item.name);
+  } catch {
+    return [];
+  }
+};
+
 export default function AdminMenuPage() {
   const [menuItems, setMenuItems] = useState([]);
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
+  const [menuSource, setMenuSource] = useState("local");
 
   useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const queryItems = parseItemsQuery(params.get("items"));
+
+    if (queryItems.length > 0) {
+      setMenuItems(queryItems);
+      setMenuSource("query");
+      return;
+    }
+
     setMenuItems(getMenu());
+    setMenuSource("local");
   }, []);
 
   const persistMenu = (nextMenu) => {
@@ -97,6 +130,11 @@ export default function AdminMenuPage() {
           <p className="mt-1 text-sm text-gray-500">
             Add and edit items for all table QR menus.
           </p>
+          {menuSource === "query" && (
+            <p className="mt-2 text-sm font-medium text-blue-600">
+              Showing menu items from URL query param `items`.
+            </p>
+          )}
         </div>
 
         <div className="rounded-xl bg-white p-6 shadow">

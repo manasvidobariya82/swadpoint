@@ -23,9 +23,32 @@ const createUpiUrl = (upiId, payeeName, amount) =>
     payeeName
   )}&am=${amount.toFixed(2)}&cu=INR`;
 
+const parseItemsQuery = (value) => {
+  if (!value) return [];
+
+  try {
+    const parsed = JSON.parse(value);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .filter((item) => item && typeof item === "object")
+      .map((item, index) => ({
+        id: item.id || `query-item-${index}`,
+        name: String(item.name || "").trim(),
+        description: String(item.description || "").trim(),
+        category: String(item.category || "Main Course"),
+        price: toNumber(item.price),
+      }))
+      .filter((item) => item.name);
+  } catch {
+    return [];
+  }
+};
+
 function CustomerMenuContent() {
   const searchParams = useSearchParams();
   const tableNo = searchParams.get("table");
+  const itemsParam = searchParams.get("items");
 
   const [menuItems, setMenuItems] = useState([]);
   const [cart, setCart] = useState([]);
@@ -36,10 +59,19 @@ function CustomerMenuContent() {
     payeeName: "SwadPoint Restaurant",
   });
   const [isValidTable, setIsValidTable] = useState(true);
+  const [menuSource, setMenuSource] = useState("local");
   const [confirmation, setConfirmation] = useState(null);
 
   useEffect(() => {
-    setMenuItems(getMenu());
+    const queryMenuItems = parseItemsQuery(itemsParam);
+    if (queryMenuItems.length > 0) {
+      setMenuItems(queryMenuItems);
+      setMenuSource("query");
+    } else {
+      setMenuItems(getMenu());
+      setMenuSource("local");
+    }
+
     setPaymentConfig(getPaymentConfig());
 
     const allTables = getTables();
@@ -49,7 +81,7 @@ function CustomerMenuContent() {
     } else {
       setIsValidTable(true);
     }
-  }, [tableNo]);
+  }, [tableNo, itemsParam]);
 
   const cartTotal = useMemo(
     () => cart.reduce((sum, item) => sum + item.price * item.qty, 0),
@@ -155,6 +187,11 @@ function CustomerMenuContent() {
           <p className="mt-1 text-sm text-gray-600">
             Table: <span className="font-semibold">{tableNo || "Unknown"}</span>
           </p>
+          {menuSource === "query" && (
+            <p className="mt-2 text-sm font-medium text-blue-600">
+              Menu loaded from QR URL.
+            </p>
+          )}
           {!isValidTable && (
             <p className="mt-2 text-sm font-medium text-red-600">
               This table QR is not registered in table management.

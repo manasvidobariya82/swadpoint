@@ -1,22 +1,47 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import Header from "../../components/ui/Header";
 import Sidebar from "./Sidebar";
 
 export default function DashboardLayout({ children }) {
-  const user = localStorage?.getItem("currentUser");
-  useEffect(() => {
-    if (!user) {
-      router.push("/login");
-    }
-  }, []);
+  const router = useRouter();
+  const [user, setUser] = useState(null);
+  const [ready, setReady] = useState(false);
 
+  useEffect(() => {
+    const rawUser = localStorage.getItem("currentUser");
+
+    if (!rawUser) {
+      setReady(true);
+      router.replace("/login");
+      return;
+    }
+
+    try {
+      setUser(JSON.parse(rawUser));
+    } catch {
+      setUser(null);
+      router.replace("/login");
+    } finally {
+      setReady(true);
+    }
+  }, [router]);
+
+  if (!ready) {
+    return null;
+  }
+
+  if (!user) {
+    return null;
+  }
+ 
   return (
     <div className="h-screen flex flex-col bg-gray-100">
       {/* HEADER (TOP) */}
       <header className="h-16 bg-white border-b flex-shrink-0 z-10">
-        <Header isAuthenticated={true} user={JSON.parse(user)} />
+        <Header isAuthenticated={Boolean(user)} user={user} />
       </header>
 
       {/* BODY (SIDEBAR + MAIN) */}

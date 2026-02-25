@@ -1,289 +1,307 @@
-// "use client";
-
-// import { useState, useEffect } from "react";
-// import { getMenu, getOrders, saveOrders } from "@/helper/storage";
-
-// export default function CustomerMenu() {
-//   const [menu, setMenu] = useState([]);
-//   const [cart, setCart] = useState([]);
-
-//   useEffect(() => {
-//     setMenu(getMenu());
-//   }, []);
-
-//   const addToCart = (item) => {
-//     setCart([...cart, item]);
-//   };
-
-//   const placeOrder = () => {
-//     if (cart.length === 0) return alert("Cart is empty");
-
-//     const newOrder = {
-//       id: Date.now(),
-//       items: cart,
-//       total: cart.reduce((sum, item) => sum + item.price, 0),
-//       status: "Pending",
-//       time: new Date().toLocaleString(),
-//     };
-
-//     const existingOrders = getOrders();
-//     const updatedOrders = [...existingOrders, newOrder];
-
-//     saveOrders(updatedOrders);
-
-//     alert("Order Placed Successfully!");
-//     setCart([]);
-//   };
-
-//   return (
-//     <div style={{ padding: 20 }}>
-//       <h2>Customer Menu</h2>
-
-//       {menu.map((item) => (
-//         <div key={item.id}>
-//           {item.name} - ₹{item.price}
-//           <button onClick={() => addToCart(item)}>Add</button>
-//         </div>
-//       ))}
-
-//       <hr />
-
-//       <h3>Cart</h3>
-
-//       {cart.map((item, index) => (
-//         <p key={index}>
-//           {item.name} - ₹{item.price}
-//         </p>
-//       ))}
-
-//       <h4>Total: ₹{cart.reduce((sum, item) => sum + item.price, 0)}</h4>
-
-//       <button onClick={placeOrder}>Place Order</button>
-//     </div>
-//   );
-// }
-// "use client";
-
-// import { useState, useEffect } from "react";
-
-// export default function AdminMenuPage() {
-//   const [menuItems, setMenuItems] = useState([]);
-//   const [form, setForm] = useState({
-//     name: "",
-//     price: "",
-//     description: "",
-//   });
-
-//   // Load saved menu
-//   useEffect(() => {
-//     const stored = localStorage.getItem("restaurantMenu");
-//     if (stored) {
-//       setMenuItems(JSON.parse(stored));
-//     }
-//   }, []);
-
-//   // Save automatically
-//   useEffect(() => {
-//     localStorage.setItem("restaurantMenu", JSON.stringify(menuItems));
-//   }, [menuItems]);
-
-//   const addItem = () => {
-//     if (!form.name || !form.price) {
-//       alert("Fill all required fields");
-//       return;
-//     }
-
-//     const newItem = {
-//       id: Date.now(),
-//       name: form.name,
-//       price: form.price,
-//       description: form.description,
-//     };
-
-//     setMenuItems([...menuItems, newItem]);
-
-//     setForm({
-//       name: "",
-//       price: "",
-//       description: "",
-//     });
-//   };
-
-//   const deleteItem = (id) => {
-//     setMenuItems(menuItems.filter((item) => item.id !== id));
-//   };
-
-//   return (
-//     <div className="p-8 bg-gray-100 min-h-screen">
-//       <div className="max-w-4xl mx-auto">
-//         <h1 className="text-3xl font-bold mb-6">Admin Menu Management</h1>
-
-//         {/* Add Item Form */}
-//         <div className="bg-white p-6 rounded-xl shadow mb-8">
-//           <input
-//             type="text"
-//             placeholder="Item Name"
-//             value={form.name}
-//             onChange={(e) => setForm({ ...form, name: e.target.value })}
-//             className="w-full border px-4 py-2 rounded mb-3"
-//           />
-
-//           <input
-//             type="number"
-//             placeholder="Price"
-//             value={form.price}
-//             onChange={(e) => setForm({ ...form, price: e.target.value })}
-//             className="w-full border px-4 py-2 rounded mb-3"
-//           />
-
-//           <textarea
-//             placeholder="Description"
-//             value={form.description}
-//             onChange={(e) => setForm({ ...form, description: e.target.value })}
-//             className="w-full border px-4 py-2 rounded mb-3"
-//           />
-
-//           <button
-//             onClick={addItem}
-//             className="bg-blue-600 text-white px-6 py-2 rounded-lg"
-//           >
-//             Add Item
-//           </button>
-//         </div>
-
-//         {/* Menu List */}
-//         <div className="bg-white p-6 rounded-xl shadow">
-//           <h2 className="text-xl font-semibold mb-4">Menu Items</h2>
-
-//           {menuItems.length === 0 ? (
-//             <p>No items added</p>
-//           ) : (
-//             menuItems.map((item) => (
-//               <div
-//                 key={item.id}
-//                 className="flex justify-between items-center border-b py-3"
-//               >
-//                 <div>
-//                   <p className="font-semibold">{item.name}</p>
-//                   <p className="text-sm text-gray-500">{item.description}</p>
-//                   <p className="text-green-600 font-bold">₹{item.price}</p>
-//                 </div>
-
-//                 <button
-//                   onClick={() => deleteItem(item.id)}
-//                   className="text-red-600"
-//                 >
-//                   Delete
-//                 </button>
-//               </div>
-//             ))
-//           )}
-//         </div>
-//       </div>
-//     </div>
-//   );
-// }
-
-// "use client";
-
-// import { useSearchParams } from "next/navigation";
-// import { useEffect, useState } from "react";
-
-// export default function CustomerMenu() {
-//   const searchParams = useSearchParams();
-//   const table = searchParams.get("table");
-
-//   const [menuItems, setMenuItems] = useState([]);
-
-//   useEffect(() => {
-//     const stored = localStorage.getItem("restaurantMenu");
-//     if (stored) {
-//       setMenuItems(JSON.parse(stored));
-//     }
-//   }, []);
-
-//   return (
-//     <div className="min-h-screen bg-gray-100 p-6">
-//       <div className="max-w-4xl mx-auto">
-//         <div className="bg-white p-6 rounded-xl shadow mb-6 text-center">
-//           <h1 className="text-2xl font-bold">🍽 Digital Menu</h1>
-//           <p className="text-gray-500 mt-2">Table No: {table}</p>
-//         </div>
-
-//         {menuItems.length === 0 ? (
-//           <p className="text-center text-gray-500">No menu items available</p>
-//         ) : (
-//           <div className="grid gap-4">
-//             {menuItems.map((item) => (
-//               <div
-//                 key={item.id}
-//                 className="bg-white p-4 rounded-xl shadow flex justify-between"
-//               >
-//                 <div>
-//                   <h2 className="font-semibold">{item.name}</h2>
-//                   <p className="text-sm text-gray-500">{item.description}</p>
-//                 </div>
-
-//                 <div className="font-bold text-green-600">₹{item.price}</div>
-//               </div>
-//             ))}
-//           </div>
-//         )}
-//       </div>
-//     </div>
-//   );
-// }
-
 "use client";
 
-import { Suspense } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useState } from "react";
+import QRCode from "react-qr-code";
+import {
+  getMenu,
+  getOrders,
+  saveOrders,
+  getPayments,
+  savePayments,
+  getPaymentConfig,
+  getTables,
+} from "@/helper/storage";
+
+const toNumber = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const createUpiUrl = (upiId, payeeName, amount) =>
+  `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(
+    payeeName
+  )}&am=${amount.toFixed(2)}&cu=INR`;
 
 function CustomerMenuContent() {
   const searchParams = useSearchParams();
-  const table = searchParams.get("table");
+  const tableNo = searchParams.get("table");
 
   const [menuItems, setMenuItems] = useState([]);
+  const [cart, setCart] = useState([]);
+  const [customerName, setCustomerName] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("UPI");
+  const [paymentConfig, setPaymentConfig] = useState({
+    upiId: "swadpoint@upi",
+    payeeName: "SwadPoint Restaurant",
+  });
+  const [isValidTable, setIsValidTable] = useState(true);
+  const [confirmation, setConfirmation] = useState(null);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const stored = localStorage.getItem("restaurantMenu");
-      if (stored) {
-        setMenuItems(JSON.parse(stored));
-      }
+    setMenuItems(getMenu());
+    setPaymentConfig(getPaymentConfig());
+
+    const allTables = getTables();
+    if (tableNo && allTables.length > 0) {
+      const exists = allTables.some((table) => table.tableNo === tableNo);
+      setIsValidTable(exists);
+    } else {
+      setIsValidTable(true);
     }
-  }, []);
+  }, [tableNo]);
+
+  const cartTotal = useMemo(
+    () => cart.reduce((sum, item) => sum + item.price * item.qty, 0),
+    [cart]
+  );
+
+  const upiUrl = useMemo(
+    () => createUpiUrl(paymentConfig.upiId, paymentConfig.payeeName, cartTotal),
+    [paymentConfig, cartTotal]
+  );
+
+  const addToCart = (item) => {
+    const price = toNumber(item.price);
+    setCart((prev) => {
+      const index = prev.findIndex((entry) => entry.id === item.id);
+      if (index === -1) {
+        return [...prev, { ...item, price, qty: 1 }];
+      }
+
+      const next = [...prev];
+      next[index] = { ...next[index], qty: next[index].qty + 1 };
+      return next;
+    });
+  };
+
+  const updateQty = (id, change) => {
+    setCart((prev) =>
+      prev
+        .map((item) =>
+          item.id === id ? { ...item, qty: Math.max(0, item.qty + change) } : item
+        )
+        .filter((item) => item.qty > 0)
+    );
+  };
+
+  const placeOrder = () => {
+    if (!tableNo) {
+      alert("Table number is missing in QR link.");
+      return;
+    }
+
+    if (cart.length === 0) {
+      alert("Please add at least one item.");
+      return;
+    }
+
+    const now = new Date();
+    const orderId = `ORD-${now.getTime()}`;
+    const paymentId = `PAY-${now.getTime()}`;
+
+    const normalizedItems = cart.map((item) => ({
+      id: item.id,
+      name: item.name,
+      price: item.price,
+      qty: item.qty,
+      lineTotal: item.price * item.qty,
+    }));
+
+    const order = {
+      id: orderId,
+      tableNo,
+      customerName: customerName.trim() || "Walk-in",
+      items: normalizedItems,
+      total: cartTotal,
+      status: "Pending",
+      paymentStatus: "Paid",
+      paymentMethod,
+      paymentId,
+      time: now.toISOString(),
+    };
+
+    const payment = {
+      id: paymentId,
+      orderId,
+      customerName: order.customerName,
+      tableNo,
+      amount: cartTotal,
+      paymentMethod,
+      status: "success",
+      timestamp: now.toISOString(),
+      transactionId: `${paymentMethod.toUpperCase()}-${now.getTime()}`,
+      items: normalizedItems.map((item) => `${item.name} x${item.qty}`),
+      upiId: paymentConfig.upiId,
+    };
+
+    saveOrders([...getOrders(), order]);
+    savePayments([...getPayments(), payment]);
+
+    setConfirmation({
+      orderId,
+      paymentId,
+      amount: cartTotal,
+    });
+    setCart([]);
+    setCustomerName("");
+  };
 
   return (
-    <div className="min-h-screen bg-gray-100 p-6">
-      <div className="max-w-4xl mx-auto">
-        <div className="bg-white p-6 rounded-xl shadow mb-6 text-center">
-          <h1 className="text-2xl font-bold">🍽 Digital Menu</h1>
-          <p className="text-gray-500 mt-2">Table No: {table}</p>
+    <div className="min-h-screen bg-gray-100 p-4 md:p-6">
+      <div className="mx-auto max-w-6xl space-y-4">
+        <div className="rounded-xl bg-white p-6 shadow">
+          <h1 className="text-2xl font-bold text-gray-900">Digital Menu</h1>
+          <p className="mt-1 text-sm text-gray-600">
+            Table: <span className="font-semibold">{tableNo || "Unknown"}</span>
+          </p>
+          {!isValidTable && (
+            <p className="mt-2 text-sm font-medium text-red-600">
+              This table QR is not registered in table management.
+            </p>
+          )}
         </div>
 
-        {menuItems.length === 0 ? (
-          <p className="text-center text-red-500 font-semibold">
-            No menu items found in localStorage
-          </p>
-        ) : (
-          <div className="grid gap-4">
-            {menuItems.map((item) => (
-              <div
-                key={item.id}
-                className="bg-white p-4 rounded-xl shadow flex justify-between"
-              >
-                <div>
-                  <h2 className="font-semibold">{item.name}</h2>
-                  <p className="text-sm text-gray-500">{item.description}</p>
-                </div>
+        <div className="grid gap-4 lg:grid-cols-3">
+          <div className="space-y-4 lg:col-span-2">
+            <div className="rounded-xl bg-white p-6 shadow">
+              <h2 className="mb-4 text-lg font-semibold text-gray-900">
+                Menu Items
+              </h2>
 
-                <div className="font-bold text-green-600">₹{item.price}</div>
-              </div>
-            ))}
+              {menuItems.length === 0 ? (
+                <p className="text-sm text-gray-500">
+                  Menu is empty. Admin can add items from dashboard menu section.
+                </p>
+              ) : (
+                <div className="space-y-3">
+                  {menuItems.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex flex-col gap-3 rounded-lg border p-4 md:flex-row md:items-center md:justify-between"
+                    >
+                      <div>
+                        <p className="font-semibold text-gray-900">{item.name}</p>
+                        <p className="text-sm text-gray-500">
+                          {item.description || "No description"}
+                        </p>
+                        <p className="mt-1 font-bold text-green-600">
+                          Rs. {toNumber(item.price)}
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => addToCart(item)}
+                        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                      >
+                        Add to cart
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
-        )}
+
+          <div className="space-y-4">
+            <div className="rounded-xl bg-white p-6 shadow">
+              <h2 className="text-lg font-semibold text-gray-900">Cart</h2>
+
+              {cart.length === 0 ? (
+                <p className="mt-3 text-sm text-gray-500">Cart is empty.</p>
+              ) : (
+                <div className="mt-3 space-y-3">
+                  {cart.map((item) => (
+                    <div
+                      key={item.id}
+                      className="rounded-lg border border-gray-200 p-3"
+                    >
+                      <p className="font-medium text-gray-900">{item.name}</p>
+                      <p className="text-sm text-gray-500">
+                        Rs. {item.price} x {item.qty}
+                      </p>
+                      <div className="mt-2 flex items-center gap-2">
+                        <button
+                          onClick={() => updateQty(item.id, -1)}
+                          className="rounded border border-gray-300 px-2 py-1 text-sm"
+                        >
+                          -
+                        </button>
+                        <span className="w-6 text-center text-sm">{item.qty}</span>
+                        <button
+                          onClick={() => updateQty(item.id, 1)}
+                          className="rounded border border-gray-300 px-2 py-1 text-sm"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <p className="mt-4 text-base font-bold text-gray-900">
+                Total: Rs. {cartTotal.toFixed(2)}
+              </p>
+
+              <div className="mt-4 space-y-3">
+                <input
+                  type="text"
+                  value={customerName}
+                  onChange={(e) => setCustomerName(e.target.value)}
+                  placeholder="Customer name (optional)"
+                  className="w-full rounded-lg border px-3 py-2 text-sm"
+                />
+
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  className="w-full rounded-lg border px-3 py-2 text-sm"
+                >
+                  <option value="UPI">UPI</option>
+                  <option value="Cash">Cash</option>
+                </select>
+              </div>
+
+              {paymentMethod === "UPI" && cartTotal > 0 && (
+                <div className="mt-4 rounded-lg border p-4">
+                  <p className="mb-2 text-sm font-medium text-gray-700">
+                    Scan restaurant payment QR
+                  </p>
+                  <div className="flex justify-center">
+                    <QRCode value={upiUrl} size={130} />
+                  </div>
+                  <p className="mt-2 break-all text-xs text-gray-500">
+                    UPI ID: {paymentConfig.upiId}
+                  </p>
+                </div>
+              )}
+
+              <button
+                onClick={placeOrder}
+                className="mt-5 w-full rounded-lg bg-green-600 px-4 py-2 font-semibold text-white hover:bg-green-700"
+              >
+                Place order and pay
+              </button>
+            </div>
+
+            {confirmation && (
+              <div className="rounded-xl border border-green-200 bg-green-50 p-4">
+                <p className="text-sm font-semibold text-green-800">
+                  Order placed successfully
+                </p>
+                <p className="mt-1 text-xs text-green-700">
+                  Order ID: {confirmation.orderId}
+                </p>
+                <p className="text-xs text-green-700">
+                  Payment ID: {confirmation.paymentId}
+                </p>
+                <p className="text-xs text-green-700">
+                  Amount: Rs. {confirmation.amount.toFixed(2)}
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

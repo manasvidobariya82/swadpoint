@@ -12,7 +12,7 @@ export default function TablesPage() {
   const STORAGE_KEY = "table-qr-codes";
 
   // 🔥 CHANGE THIS IF YOUR IP IS DIFFERENT
-  const BASE_URL = "/";
+  const BASE_URL = window.location.origin;
 
   // Load saved tables
   useEffect(() => {

@@ -370,9 +370,9 @@ export default function LoginPage() {
         {/* Register Link */}
         <div style={styles.registerLink}>
           <p>
-            Did not have any account?{" "}
-            <Link href="/register" style={styles.registerText}>
-              Register Now
+            Do not have an account?{" "}
+            <Link href="/signup" style={styles.registerText}>
+              Sign up
             </Link>
           </p>
         </div>

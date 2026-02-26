@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import QRCode from "react-qr-code";
 import {
@@ -87,6 +87,8 @@ function CustomerMenuContent() {
   const [paymentMethod, setPaymentMethod] = useState("UPI");
   const [confirmation, setConfirmation] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [recentlyAdded, setRecentlyAdded] = useState({});
+  const addTimeoutRef = useRef({});
 
   const queryMenuItems = useMemo(() => parseItemsQuery(itemsParam), [itemsParam]);
   const menuItems = useMemo(
@@ -138,7 +140,30 @@ function CustomerMenuContent() {
       next[index] = { ...next[index], qty: next[index].qty + 1 };
       return next;
     });
+
+    setRecentlyAdded((prev) => ({ ...prev, [item.id]: true }));
+
+    if (addTimeoutRef.current[item.id]) {
+      clearTimeout(addTimeoutRef.current[item.id]);
+    }
+
+    addTimeoutRef.current[item.id] = setTimeout(() => {
+      setRecentlyAdded((prev) => {
+        const next = { ...prev };
+        delete next[item.id];
+        return next;
+      });
+    }, 2000);
   };
+
+  useEffect(() => {
+    const timeoutMap = addTimeoutRef.current;
+    return () => {
+      Object.values(timeoutMap).forEach((timerId) =>
+        clearTimeout(timerId)
+      );
+    };
+  }, []);
 
   const updateQty = (id, change) => {
     setCart((prev) =>
@@ -170,6 +195,16 @@ function CustomerMenuContent() {
       return;
     }
 
+    if (!customerName.trim()) {
+      alert("Customer name is required.");
+      return;
+    }
+
+    if (!customerMobile.trim()) {
+      alert("Mobile number is required.");
+      return;
+    }
+
     if (paymentMethod === "UPI" && !isUpiReady) {
       alert("UPI is unavailable. Ask restaurant to configure a valid UPI ID.");
       return;
@@ -191,7 +226,7 @@ function CustomerMenuContent() {
     const order = {
       id: orderId,
       tableNo,
-      customerName: customerName.trim() || "Walk-in",
+      customerName: customerName.trim(),
       customerMobile: customerMobile.trim(),
       items: normalizedItems,
       total: cartTotal,
@@ -289,9 +324,13 @@ function CustomerMenuContent() {
                       </div>
                       <button
                         onClick={() => addToCart(item)}
-                        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                        className={`rounded-lg px-4 py-2 text-sm font-medium text-white ${
+                          recentlyAdded[item.id]
+                            ? "bg-emerald-600"
+                            : "bg-blue-600 hover:bg-blue-700"
+                        }`}
                       >
-                        Add to cart
+                        {recentlyAdded[item.id] ? "Added" : "Add to cart"}
                       </button>
                     </div>
                   ))}
@@ -342,19 +381,24 @@ function CustomerMenuContent() {
               </p>
 
               <div className="mt-4 space-y-3">
+                <p className="text-sm font-medium text-gray-800">
+                  Customer details (required)
+                </p>
                 <input
                   type="text"
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
-                  placeholder="Customer name (optional)"
-                  className="w-full rounded-lg border px-3 py-2 text-sm"
+                  placeholder="Customer name"
+                  required
+                  className="w-full rounded-lg border px-3 py-2 text-sm font-medium text-gray-900 placeholder:text-gray-500"
                 />
                 <input
                   type="tel"
                   value={customerMobile}
                   onChange={(e) => setCustomerMobile(e.target.value)}
-                  placeholder="Mobile number (optional)"
-                  className="w-full rounded-lg border px-3 py-2 text-sm"
+                  placeholder="Mobile number"
+                  required
+                  className="w-full rounded-lg border px-3 py-2 text-sm font-medium text-gray-900 placeholder:text-gray-500"
                 />
 
                 <select

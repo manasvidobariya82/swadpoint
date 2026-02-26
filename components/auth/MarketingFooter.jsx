@@ -220,35 +220,18 @@ export default function MarketingFooter() {
       return;
     }
 
-    try {
-      const subject = encodeURIComponent("New Newsletter Subscriber");
-      const body = encodeURIComponent(
-        `Hello SwadPoint Team,
+    const subject = encodeURIComponent("New Newsletter Subscriber");
+    const body = encodeURIComponent(
+      `Hello SwadPoint Team,
 
-You have received a new newsletter subscription.
+Subscriber Email: ${normalizedEmail}`,
+    );
 
-Subscriber Email: ${normalizedEmail}
+    const gmailURL = `https://mail.google.com/mail/?view=cm&fs=1&to=support@swadpoint.com&su=${subject}&body=${body}`;
 
-Regards,
-SwadPoint Website`,
-      );
+    window.location.href = gmailURL;
 
-      const gmailURL = `https://mail.google.com/mail/?view=cm&fs=1&to=support@swadpoint.com&su=${subject}&body=${body}`;
-
-      window.open(gmailURL, "_blank");
-
-      setSubscribeStatus({
-        type: "success",
-        message: "Redirecting to Gmail...",
-      });
-
-      setSubscriberEmail("");
-    } catch {
-      setSubscribeStatus({
-        type: "error",
-        message: "Could not redirect to Gmail. Please try again.",
-      });
-    }
+    setSubscriberEmail("");
   };
 
   const scrollPageToTop = () => {
@@ -269,16 +252,21 @@ SwadPoint Website`,
     window.setTimeout(scrollPageToTop, 100);
   };
 
+  const handleEmailClick = (e) => {
+    e.preventDefault();
+
+    const subject = encodeURIComponent("Support Request");
+    const body = encodeURIComponent("Hello SwadPoint Team,");
+
+    const gmailURL = `https://mail.google.com/mail/?view=cm&fs=1&to=support@swadpoint.com&su=${subject}&body=${body}`;
+
+    window.location.href = gmailURL;
+  };
+
   return (
     <footer className="bg-gradient-to-br from-gray-950 via-gray-900 to-black text-white pt-24 pb-10 relative overflow-hidden">
-      <div className="absolute inset-0 opacity-20 pointer-events-none">
-        <div className="absolute top-10 left-10 w-80 h-80 bg-blue-500 rounded-full blur-3xl"></div>
-        <div className="absolute bottom-10 right-10 w-80 h-80 bg-purple-500 rounded-full blur-3xl"></div>
-      </div>
-
       <div className="relative z-10 max-w-7xl mx-auto px-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-14">
-          {/* Logo & About */}
           <div>
             <h3 className="text-3xl font-bold text-cyan-400 mb-5">SwadPoint</h3>
             <p className="text-gray-400 leading-relaxed mb-6">
@@ -286,7 +274,6 @@ SwadPoint Website`,
             </p>
           </div>
 
-          {/* Quick Links */}
           <div>
             <h4 className="text-xl font-semibold mb-6">Quick Links</h4>
             <ul className="space-y-4 text-gray-400">
@@ -303,6 +290,7 @@ SwadPoint Website`,
               ))}
             </ul>
           </div>
+
           <div>
             <h4 className="text-xl font-semibold mb-6">Contact</h4>
             <ul className="space-y-4 text-gray-400">
@@ -310,9 +298,8 @@ SwadPoint Website`,
               <li>+91 98765 43210</li>
               <li>
                 <a
-                  href="https://mail.google.com/mail/?view=cm&fs=1&to=support@swadpoint.com"
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  href="#"
+                  onClick={handleEmailClick}
                   className="hover:text-cyan-400 transition-colors"
                 >
                   support@swadpoint.com
@@ -322,13 +309,8 @@ SwadPoint Website`,
             </ul>
           </div>
 
-          {/* Newsletter */}
           <div>
             <h4 className="text-xl font-semibold mb-6">Stay Updated</h4>
-            <p className="text-gray-400 mb-6">
-              Subscribe to receive product updates and feature releases.
-            </p>
-
             <form onSubmit={handleSubscribe}>
               <div className="flex overflow-hidden rounded-full border border-white/20">
                 <input
@@ -336,12 +318,7 @@ SwadPoint Website`,
                   placeholder="Enter your email"
                   className="px-5 py-3 bg-white/10 text-sm focus:outline-none w-full"
                   value={subscriberEmail}
-                  onChange={(event) => {
-                    setSubscriberEmail(event.target.value);
-                    if (subscribeStatus.message) {
-                      setSubscribeStatus({ type: "", message: "" });
-                    }
-                  }}
+                  onChange={(e) => setSubscriberEmail(e.target.value)}
                   required
                 />
                 <button
@@ -351,18 +328,6 @@ SwadPoint Website`,
                   Subscribe
                 </button>
               </div>
-
-              {subscribeStatus.message && (
-                <p
-                  className={`mt-3 text-xs ${
-                    subscribeStatus.type === "success"
-                      ? "text-emerald-300"
-                      : "text-red-300"
-                  }`}
-                >
-                  {subscribeStatus.message}
-                </p>
-              )}
             </form>
           </div>
         </div>

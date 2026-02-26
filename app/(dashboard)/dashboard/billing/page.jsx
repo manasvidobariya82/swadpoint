@@ -5,13 +5,18 @@ import QRCode from "react-qr-code";
 import {
   getPaymentConfig,
   savePaymentConfig,
-  getPayments,
 } from "@/helper/storage";
 
 const createUpiUrl = (upiId, payeeName, amount = 1) =>
   `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(
     payeeName
   )}&am=${Number(amount).toFixed(2)}&cu=INR`;
+
+const fetchPaymentsFromApi = async () => {
+  const response = await fetch("/api/payments", { cache: "no-store" });
+  if (!response.ok) throw new Error("Failed to fetch payments");
+  return response.json();
+};
 
 export default function BillingPage() {
   const [payments, setPayments] = useState([]);
@@ -20,29 +25,31 @@ export default function BillingPage() {
     payeeName: "SwadPoint Restaurant",
   });
   const [statusFilter, setStatusFilter] = useState("All");
+  const [isLoading, setIsLoading] = useState(true);
 
-  const loadData = () => {
-    const list = getPayments().sort(
-      (a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-    );
-    setPayments(list);
+  const loadData = async () => {
+    try {
+      const list = await fetchPaymentsFromApi();
+      setPayments(Array.isArray(list) ? list : []);
+    } catch {
+      setPayments([]);
+    } finally {
+      setIsLoading(false);
+    }
+
     setPaymentConfig(getPaymentConfig());
   };
 
   useEffect(() => {
-    loadData();
+    const timeoutId = window.setTimeout(() => {
+      loadData();
+    }, 0);
+    const intervalId = window.setInterval(loadData, 3000);
 
-    const sync = (event) => {
-      if (
-        event.key === "restaurantPayments" ||
-        event.key === "restaurantPaymentConfig"
-      ) {
-        loadData();
-      }
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.clearInterval(intervalId);
     };
-
-    window.addEventListener("storage", sync);
-    return () => window.removeEventListener("storage", sync);
   }, []);
 
   const filteredPayments = useMemo(() => {
@@ -189,8 +196,10 @@ export default function BillingPage() {
             </select>
           </div>
 
-          {filteredPayments.length === 0 ? (
+          {!isLoading && filteredPayments.length === 0 ? (
             <p className="text-sm text-gray-500">No payments found.</p>
+          ) : isLoading ? (
+            <p className="text-sm text-gray-500">Loading payments...</p>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200 text-sm">

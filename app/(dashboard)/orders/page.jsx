@@ -1,29 +1,48 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getOrders, saveOrders } from "@/helper/storage";
+
+const fetchOrdersFromApi = async () => {
+  const response = await fetch("/api/orders", { cache: "no-store" });
+  if (!response.ok) throw new Error("Failed to fetch orders");
+  return response.json();
+};
+
+const updateOrderStatus = async (id, status) => {
+  const response = await fetch("/api/orders", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, status }),
+  });
+  if (!response.ok) throw new Error("Failed to update order");
+  return response.json();
+};
 
 export default function OrdersPage() {
   const [orders, setOrders] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [actionLoadingId, setActionLoadingId] = useState("");
 
-  const loadOrders = () => {
-    const list = getOrders().sort(
-      (a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()
-    );
-    setOrders(list);
+  const loadOrders = async () => {
+    try {
+      const list = await fetchOrdersFromApi();
+      setOrders(Array.isArray(list) ? list : []);
+    } catch {
+      setOrders([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
-    loadOrders();
-
-    const syncOrders = (event) => {
-      if (event.key === "restaurantOrders") {
-        loadOrders();
-      }
+    const timeoutId = window.setTimeout(() => {
+      loadOrders();
+    }, 0);
+    const intervalId = window.setInterval(loadOrders, 3000);
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.clearInterval(intervalId);
     };
-
-    window.addEventListener("storage", syncOrders);
-    return () => window.removeEventListener("storage", syncOrders);
   }, []);
 
   const pendingCount = useMemo(
@@ -31,12 +50,15 @@ export default function OrdersPage() {
     [orders]
   );
 
-  const markCompleted = (id) => {
-    const updated = orders.map((order) =>
-      order.id === id ? { ...order, status: "Completed" } : order
-    );
-    setOrders(updated);
-    saveOrders(updated);
+  const markCompleted = async (id) => {
+    if (actionLoadingId) return;
+    try {
+      setActionLoadingId(id);
+      await updateOrderStatus(id, "Completed");
+      await loadOrders();
+    } finally {
+      setActionLoadingId("");
+    }
   };
 
   return (
@@ -49,9 +71,13 @@ export default function OrdersPage() {
           </p>
         </div>
 
-        {orders.length === 0 ? (
+        {!loading && orders.length === 0 ? (
           <div className="rounded-xl bg-white p-8 text-center text-sm text-gray-500 shadow">
             No orders yet.
+          </div>
+        ) : loading ? (
+          <div className="rounded-xl bg-white p-8 text-center text-sm text-gray-500 shadow">
+            Loading orders...
           </div>
         ) : (
           <div className="space-y-4">
@@ -112,9 +138,12 @@ export default function OrdersPage() {
                 {order.status !== "Completed" && (
                   <button
                     onClick={() => markCompleted(order.id)}
+                    disabled={actionLoadingId === order.id}
                     className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
                   >
-                    Mark Completed
+                    {actionLoadingId === order.id
+                      ? "Updating..."
+                      : "Mark Completed"}
                   </button>
                 )}
               </div>

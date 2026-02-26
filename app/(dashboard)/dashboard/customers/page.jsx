@@ -1,9 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { getOrders } from "@/helper/storage";
-
-const ORDER_STORAGE_KEY = "restaurantOrders";
 
 const toNumber = (value) => {
   const parsed = Number(value);
@@ -115,33 +112,40 @@ const deriveCustomersFromOrders = (orders) => {
   }));
 };
 
+const fetchOrdersFromApi = async () => {
+  const response = await fetch("/api/orders", { cache: "no-store" });
+  if (!response.ok) throw new Error("Failed to fetch orders");
+  return response.json();
+};
+
 export default function Page() {
-  const [customers, setCustomers] = useState(() =>
-    deriveCustomersFromOrders(getOrders())
-  );
+  const [customers, setCustomers] = useState([]);
   const [search, setSearch] = useState("");
   const [entries, setEntries] = useState(10);
   const [page, setPage] = useState(1);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [selected, setSelected] = useState(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-  const loadCustomers = () => {
-    const orderList = getOrders();
-    setCustomers(deriveCustomersFromOrders(orderList));
+  const loadCustomers = async () => {
+    try {
+      const orderList = await fetchOrdersFromApi();
+      setCustomers(deriveCustomersFromOrders(orderList));
+    } catch {
+      setCustomers([]);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   useEffect(() => {
-    const syncOrders = (event) => {
-      if (!event?.key || event.key === ORDER_STORAGE_KEY) {
-        loadCustomers();
-      }
-    };
-
-    window.addEventListener("storage", syncOrders);
+    const timeoutId = window.setTimeout(() => {
+      loadCustomers();
+    }, 0);
     const intervalId = window.setInterval(loadCustomers, 3000);
 
     return () => {
-      window.removeEventListener("storage", syncOrders);
+      window.clearTimeout(timeoutId);
       window.clearInterval(intervalId);
     };
   }, []);
@@ -259,7 +263,7 @@ export default function Page() {
             {paginated.length === 0 ? (
               <tr>
                 <td colSpan={9} className="py-10 text-center text-gray-400">
-                  No Customers Found
+                  {isLoading ? "Loading customers..." : "No Customers Found"}
                 </td>
               </tr>
             ) : (

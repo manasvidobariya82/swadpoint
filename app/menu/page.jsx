@@ -1,14 +1,10 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import QRCode from "react-qr-code";
 import {
   getMenu,
-  getOrders,
-  saveOrders,
-  getPayments,
-  savePayments,
   getPaymentConfig,
   getTables,
 } from "@/helper/storage";
@@ -64,6 +60,20 @@ const parseItemsQuery = (value) => {
   }
 };
 
+const postJson = async (url, payload) => {
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    throw new Error("Request failed");
+  }
+
+  return response.json();
+};
+
 function CustomerMenuContent() {
   const searchParams = useSearchParams();
   const tableNo = searchParams.get("table");
@@ -71,42 +81,35 @@ function CustomerMenuContent() {
   const upiIdParam = searchParams.get("upiId");
   const payeeNameParam = searchParams.get("payeeName");
 
-  const [menuItems, setMenuItems] = useState([]);
   const [cart, setCart] = useState([]);
   const [customerName, setCustomerName] = useState("");
   const [customerMobile, setCustomerMobile] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("UPI");
-  const [paymentConfig, setPaymentConfig] = useState(DEFAULT_PAYMENT_CONFIG);
-  const [isValidTable, setIsValidTable] = useState(true);
-  const [menuSource, setMenuSource] = useState("local");
   const [confirmation, setConfirmation] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  useEffect(() => {
-    const queryMenuItems = parseItemsQuery(itemsParam);
-    if (queryMenuItems.length > 0) {
-      setMenuItems(queryMenuItems);
-      setMenuSource("query");
-    } else {
-      setMenuItems(getMenu());
-      setMenuSource("local");
-    }
+  const queryMenuItems = useMemo(() => parseItemsQuery(itemsParam), [itemsParam]);
+  const menuItems = useMemo(
+    () => (queryMenuItems.length > 0 ? queryMenuItems : getMenu()),
+    [queryMenuItems]
+  );
+  const menuSource = queryMenuItems.length > 0 ? "query" : "local";
 
+  const paymentConfig = useMemo(() => {
     const storedPaymentConfig = sanitizePaymentConfig(getPaymentConfig());
-    setPaymentConfig(
-      sanitizePaymentConfig({
-        upiId: upiIdParam || storedPaymentConfig.upiId,
-        payeeName: payeeNameParam || storedPaymentConfig.payeeName,
-      })
-    );
+    return sanitizePaymentConfig({
+      upiId: upiIdParam || storedPaymentConfig.upiId,
+      payeeName: payeeNameParam || storedPaymentConfig.payeeName,
+    });
+  }, [upiIdParam, payeeNameParam]);
 
+  const isValidTable = useMemo(() => {
     const allTables = getTables();
     if (tableNo && allTables.length > 0) {
-      const exists = allTables.some((table) => table.tableNo === tableNo);
-      setIsValidTable(exists);
-    } else {
-      setIsValidTable(true);
+      return allTables.some((table) => table.tableNo === tableNo);
     }
-  }, [tableNo, itemsParam, upiIdParam, payeeNameParam]);
+    return true;
+  }, [tableNo]);
 
   const cartTotal = useMemo(
     () => cart.reduce((sum, item) => sum + item.price * item.qty, 0),
@@ -156,7 +159,7 @@ function CustomerMenuContent() {
     window.location.href = upiUrl;
   };
 
-  const placeOrder = () => {
+  const placeOrder = async () => {
     if (!tableNo) {
       alert("Table number is missing in QR link.");
       return;
@@ -171,6 +174,7 @@ function CustomerMenuContent() {
       alert("UPI is unavailable. Ask restaurant to configure a valid UPI ID.");
       return;
     }
+    if (isSubmitting) return;
 
     const now = new Date();
     const orderId = `ORD-${now.getTime()}`;
@@ -213,8 +217,17 @@ function CustomerMenuContent() {
       upiId: paymentConfig.upiId,
     };
 
-    saveOrders([...getOrders(), order]);
-    savePayments([...getPayments(), payment]);
+    try {
+      setIsSubmitting(true);
+      await Promise.all([
+        postJson("/api/orders", order),
+        postJson("/api/payments", payment),
+      ]);
+    } catch {
+      alert("Could not submit order. Please check internet/server and retry.");
+      setIsSubmitting(false);
+      return;
+    }
 
     setConfirmation({
       orderId,
@@ -224,6 +237,7 @@ function CustomerMenuContent() {
     setCart([]);
     setCustomerName("");
     setCustomerMobile("");
+    setIsSubmitting(false);
   };
 
   return (
@@ -381,9 +395,10 @@ function CustomerMenuContent() {
 
               <button
                 onClick={placeOrder}
+                disabled={isSubmitting}
                 className="mt-5 w-full rounded-lg bg-green-600 px-4 py-2 font-semibold text-white hover:bg-green-700"
               >
-                Place order and pay
+                {isSubmitting ? "Placing order..." : "Place order and pay"}
               </button>
             </div>
 

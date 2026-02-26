@@ -13,10 +13,29 @@ import {
   getTables,
 } from "@/helper/storage";
 
+const DEFAULT_PAYMENT_CONFIG = {
+  upiId: "swadpoint@upi",
+  payeeName: "SwadPoint Restaurant",
+};
+
+const UPI_ID_REGEX = /^[a-zA-Z0-9._-]{2,}@[a-zA-Z0-9.-]{2,}$/;
+
 const toNumber = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
 };
+
+const sanitizePaymentConfig = (config) => {
+  const raw = config && typeof config === "object" ? config : {};
+  const upiId = String(raw.upiId || DEFAULT_PAYMENT_CONFIG.upiId).trim();
+  const payeeName = String(
+    raw.payeeName || DEFAULT_PAYMENT_CONFIG.payeeName
+  ).trim();
+
+  return { upiId, payeeName };
+};
+
+const isValidUpiId = (value) => UPI_ID_REGEX.test(String(value || "").trim());
 
 const createUpiUrl = (upiId, payeeName, amount) =>
   `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(
@@ -49,15 +68,14 @@ function CustomerMenuContent() {
   const searchParams = useSearchParams();
   const tableNo = searchParams.get("table");
   const itemsParam = searchParams.get("items");
+  const upiIdParam = searchParams.get("upiId");
+  const payeeNameParam = searchParams.get("payeeName");
 
   const [menuItems, setMenuItems] = useState([]);
   const [cart, setCart] = useState([]);
   const [customerName, setCustomerName] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("UPI");
-  const [paymentConfig, setPaymentConfig] = useState({
-    upiId: "swadpoint@upi",
-    payeeName: "SwadPoint Restaurant",
-  });
+  const [paymentConfig, setPaymentConfig] = useState(DEFAULT_PAYMENT_CONFIG);
   const [isValidTable, setIsValidTable] = useState(true);
   const [menuSource, setMenuSource] = useState("local");
   const [confirmation, setConfirmation] = useState(null);
@@ -72,7 +90,13 @@ function CustomerMenuContent() {
       setMenuSource("local");
     }
 
-    setPaymentConfig(getPaymentConfig());
+    const storedPaymentConfig = sanitizePaymentConfig(getPaymentConfig());
+    setPaymentConfig(
+      sanitizePaymentConfig({
+        upiId: upiIdParam || storedPaymentConfig.upiId,
+        payeeName: payeeNameParam || storedPaymentConfig.payeeName,
+      })
+    );
 
     const allTables = getTables();
     if (tableNo && allTables.length > 0) {
@@ -81,17 +105,22 @@ function CustomerMenuContent() {
     } else {
       setIsValidTable(true);
     }
-  }, [tableNo, itemsParam]);
+  }, [tableNo, itemsParam, upiIdParam, payeeNameParam]);
 
   const cartTotal = useMemo(
     () => cart.reduce((sum, item) => sum + item.price * item.qty, 0),
     [cart]
   );
 
-  const upiUrl = useMemo(
-    () => createUpiUrl(paymentConfig.upiId, paymentConfig.payeeName, cartTotal),
-    [paymentConfig, cartTotal]
+  const isUpiReady = useMemo(
+    () => isValidUpiId(paymentConfig.upiId),
+    [paymentConfig.upiId]
   );
+
+  const upiUrl = useMemo(() => {
+    if (!isUpiReady || cartTotal <= 0) return "";
+    return createUpiUrl(paymentConfig.upiId, paymentConfig.payeeName, cartTotal);
+  }, [paymentConfig, cartTotal, isUpiReady]);
 
   const addToCart = (item) => {
     const price = toNumber(item.price);
@@ -117,6 +146,15 @@ function CustomerMenuContent() {
     );
   };
 
+  const openUpiApp = () => {
+    if (!isUpiReady || !upiUrl) {
+      alert("UPI ID is invalid. Ask restaurant to update Billing settings.");
+      return;
+    }
+
+    window.location.href = upiUrl;
+  };
+
   const placeOrder = () => {
     if (!tableNo) {
       alert("Table number is missing in QR link.");
@@ -125,6 +163,11 @@ function CustomerMenuContent() {
 
     if (cart.length === 0) {
       alert("Please add at least one item.");
+      return;
+    }
+
+    if (paymentMethod === "UPI" && !isUpiReady) {
+      alert("UPI is unavailable. Ask restaurant to configure a valid UPI ID.");
       return;
     }
 
@@ -305,11 +348,23 @@ function CustomerMenuContent() {
                     Scan restaurant payment QR
                   </p>
                   <div className="flex justify-center">
-                    <QRCode value={upiUrl} size={130} />
+                    <QRCode value={upiUrl || "upi://pay"} size={130} />
                   </div>
                   <p className="mt-2 break-all text-xs text-gray-500">
                     UPI ID: {paymentConfig.upiId}
                   </p>
+                  {!isUpiReady && (
+                    <p className="mt-2 text-xs font-medium text-red-600">
+                      Invalid UPI ID. Restaurant must update billing settings.
+                    </p>
+                  )}
+                  <button
+                    onClick={openUpiApp}
+                    disabled={!isUpiReady}
+                    className="mt-3 w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:bg-gray-300"
+                  >
+                    Pay with UPI app
+                  </button>
                 </div>
               )}
 

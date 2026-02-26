@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import QRCode from "react-qr-code";
 import { toast, Toaster } from "react-hot-toast";
 import { Copy, ExternalLink, Trash2 } from "lucide-react";
-import { getMenu, getTables, saveTables } from "@/helper/storage";
+import { getMenu, getPaymentConfig, getTables, saveTables } from "@/helper/storage";
 
 const MENU_BASE_URL_KEY = "restaurantMenuBaseUrl";
 
@@ -92,6 +92,13 @@ export default function TablesPage() {
       params.set("items", JSON.stringify(compactItems));
     }
 
+    const paymentConfig = getPaymentConfig();
+    const upiId = String(paymentConfig?.upiId || "").trim();
+    const payeeName = String(paymentConfig?.payeeName || "").trim();
+
+    if (upiId) params.set("upiId", upiId);
+    if (payeeName) params.set("payeeName", payeeName);
+
     return `${origin}/menu?${params.toString()}`;
   };
 
@@ -104,6 +111,12 @@ export default function TablesPage() {
     const normalizedTable = tableNo.trim();
     if (!normalizedTable) {
       toast.error("Enter table number");
+      return;
+    }
+
+    const activeBaseUrl = getActiveBaseUrl();
+    if (!activeBaseUrl || isLocalHostUrl(activeBaseUrl)) {
+      toast.error("Set Phone Access URL to LAN IP or deployed domain first");
       return;
     }
 

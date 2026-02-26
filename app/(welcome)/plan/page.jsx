@@ -180,12 +180,12 @@ export default function PlanPage() {
             >
               Start 14-Day Free Trial
             </button>
-            {/* <button
+            <button
               className="bg-white hover:bg-gray-50 text-blue-600 font-semibold py-3 px-8 rounded-lg border-2 border-blue-600 transition duration-200"
               onClick={() => router.push("/demo")}
             >
               Book a Demo
-            </button> */}
+            </button>
           </div>
         </div>
 

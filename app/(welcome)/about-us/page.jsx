@@ -134,7 +134,7 @@ const AboutUs = () => {
             </span>
           </h1>
           <p className="text-xl md:text-2xl text-gray-600 max-w-3xl mx-auto leading-relaxed mb-10">
-            We're on a mission to transform the restaurant industry through
+            We are on a mission to transform the restaurant industry through
             innovative technology that creates unforgettable dining experiences.
           </p>
           <div className="inline-flex items-center gap-2 bg-gradient-to-r from-blue-500 to-cyan-500 text-white px-6 py-3 rounded-full font-medium">
@@ -214,7 +214,7 @@ const AboutUs = () => {
                   hundreds of restaurants across multiple countries.
                 </p>
                 <p className="text-lg leading-relaxed">
-                  Today, we're proud to be at the forefront of restaurant
+                  Today, we are proud to be at the forefront of restaurant
                   technology, combining artificial intelligence, augmented
                   reality, and data analytics to create solutions that benefit
                   both restaurants and their customers.
@@ -224,15 +224,20 @@ const AboutUs = () => {
             <div className="relative">
               <div className="bg-gradient-to-br from-blue-500 to-cyan-400 rounded-3xl p-1">
                 <div className="bg-white rounded-2xl p-6">
-                  <div className="aspect-video rounded-xl bg-gradient-to-br from-blue-50 to-cyan-50 flex items-center justify-center">
-                    <div className="text-center p-8">
-                      <div className="text-6xl mb-4">🍽️</div>
-                      <h3 className="text-2xl font-bold text-gray-900 mb-2">
+                  <div className="relative aspect-video rounded-xl overflow-hidden">
+                    <img
+                      src="https://images.unsplash.com/photo-1556740772-1a741367b93e?auto=format&fit=crop&w=1400&q=80"
+                      alt="Vision 2026 restaurant technology roadmap"
+                      className="h-full w-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-slate-900/75 via-slate-900/20 to-transparent" />
+                    <div className="absolute bottom-0 left-0 right-0 p-5">
+                      <h3 className="text-2xl font-bold text-white mb-2">
                         Vision 2026
                       </h3>
-                      <p className="text-gray-600">
-                        To be the global leader in restaurant technology
-                        innovation
+                      <p className="text-sm text-blue-100 leading-relaxed">
+                        Build the most trusted digital dining platform for
+                        restaurants and customers worldwide.
                       </p>
                     </div>
                   </div>
@@ -401,3 +406,4 @@ const AboutUs = () => {
 };
 
 export default AboutUs;
+

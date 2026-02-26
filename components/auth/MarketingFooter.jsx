@@ -1,6 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
+import { useState } from "react";
 
 const QUICK_LINKS = [
   { label: "Home", href: "/welcome" },
@@ -12,6 +13,58 @@ const QUICK_LINKS = [
 export default function MarketingFooter() {
   const router = useRouter();
   const pathname = usePathname();
+  const [subscriberEmail, setSubscriberEmail] = useState("");
+  const [subscribeStatus, setSubscribeStatus] = useState({
+    type: "",
+    message: "",
+  });
+
+  const handleSubscribe = (event) => {
+    event.preventDefault();
+
+    const normalizedEmail = subscriberEmail.trim().toLowerCase();
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+    if (!emailRegex.test(normalizedEmail)) {
+      setSubscribeStatus({
+        type: "error",
+        message: "Please enter a valid email address.",
+      });
+      return;
+    }
+
+    try {
+      const storageKey = "swadpoint_newsletter_subscribers";
+      const existingSubscribers = JSON.parse(
+        localStorage.getItem(storageKey) || "[]"
+      );
+      const alreadyExists = existingSubscribers.some(
+        (entry) =>
+          (typeof entry === "string" ? entry : entry?.email) === normalizedEmail
+      );
+
+      if (!alreadyExists) {
+        existingSubscribers.push({
+          email: normalizedEmail,
+          subscribedAt: new Date().toISOString(),
+        });
+        localStorage.setItem(storageKey, JSON.stringify(existingSubscribers));
+      }
+
+      setSubscribeStatus({
+        type: "success",
+        message: alreadyExists
+          ? "This email is already subscribed."
+          : "Subscribed successfully. Updates will be shared on email.",
+      });
+      setSubscriberEmail("");
+    } catch {
+      setSubscribeStatus({
+        type: "error",
+        message: "Could not subscribe right now. Please try again.",
+      });
+    }
+  };
 
   const scrollPageToTop = () => {
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -69,7 +122,14 @@ export default function MarketingFooter() {
             <ul className="space-y-4 text-gray-400">
               <li>Surat, Gujarat</li>
               <li>+91 98765 43210</li>
-              <li>support@swadpoint.com</li>
+              <li>
+                <a
+                  href="mailto:support@swadpoint.com"
+                  className="hover:text-cyan-400 transition-colors"
+                >
+                  support@swadpoint.com
+                </a>
+              </li>
               <li>Mon - Sat | 10:00 AM - 11:00 PM</li>
             </ul>
           </div>
@@ -80,16 +140,40 @@ export default function MarketingFooter() {
               Subscribe to receive product updates and feature releases.
             </p>
 
-            <div className="flex overflow-hidden rounded-full border border-white/20">
-              <input
-                type="email"
-                placeholder="Enter your email"
-                className="px-5 py-3 bg-white/10 text-sm focus:outline-none w-full"
-              />
-              <button className="px-6 bg-gradient-to-r from-blue-500 to-cyan-500 font-semibold hover:opacity-90 transition-all">
-                Subscribe
-              </button>
-            </div>
+            <form onSubmit={handleSubscribe}>
+              <div className="flex overflow-hidden rounded-full border border-white/20">
+                <input
+                  type="email"
+                  placeholder="Enter your email"
+                  className="px-5 py-3 bg-white/10 text-sm focus:outline-none w-full"
+                  value={subscriberEmail}
+                  onChange={(event) => {
+                    setSubscriberEmail(event.target.value);
+                    if (subscribeStatus.message) {
+                      setSubscribeStatus({ type: "", message: "" });
+                    }
+                  }}
+                  required
+                />
+                <button
+                  type="submit"
+                  className="px-6 bg-gradient-to-r from-blue-500 to-cyan-500 font-semibold hover:opacity-90 transition-all"
+                >
+                  Subscribe
+                </button>
+              </div>
+              {subscribeStatus.message ? (
+                <p
+                  className={`mt-3 text-xs ${
+                    subscribeStatus.type === "success"
+                      ? "text-emerald-300"
+                      : "text-red-300"
+                  }`}
+                >
+                  {subscribeStatus.message}
+                </p>
+              ) : null}
+            </form>
           </div>
         </div>
 

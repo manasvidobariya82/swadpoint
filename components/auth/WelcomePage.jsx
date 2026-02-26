@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import MarketingFooter from "@/components/auth/MarketingFooter";
 
 export default function LandingPage() {
   const router = useRouter();
@@ -130,36 +131,6 @@ export default function LandingPage() {
       a: "You get ongoing support for billing setup, QR issues, and order workflow improvements.",
     },
   ];
-  const footerLinks = [
-    { name: "Home", path: "/welcome" },
-    { name: "Features", path: "/features" },
-    { name: "Plan", path: "/plan" },
-    { name: "About Us", path: "/about-us" },
-  ];
-
-  const navigateFromFooter = (path) => {
-    if (typeof window === "undefined") return;
-
-    const currentPath = window.location.pathname;
-    if (currentPath === path) {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-      const main = document.querySelector("main");
-      if (main && typeof main.scrollTo === "function") {
-        main.scrollTo({ top: 0, behavior: "smooth" });
-      }
-      return;
-    }
-
-    router.push(path);
-    window.setTimeout(() => {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-      const main = document.querySelector("main");
-      if (main && typeof main.scrollTo === "function") {
-        main.scrollTo({ top: 0, behavior: "smooth" });
-      }
-    }, 100);
-  };
-
   return (
     <div className="font-sans bg-white text-gray-900">
       {/* ================= HERO SECTION ================= */}
@@ -209,12 +180,12 @@ export default function LandingPage() {
             >
               🚀 Get Started Free
             </button>
-            {/* <button
+            <button
               onClick={() => router.push("/demo")}
               className="px-12 py-4 bg-white/10 backdrop-blur-sm border-2 border-white/30 hover:bg-white/20 text-white rounded-full font-semibold text-lg transition-all duration-300 hover:shadow-lg"
             >
               📅 Request a Demo
-            </button> */}
+            </button>
           </div>
 
           {/* Trust badge */}
@@ -566,85 +537,7 @@ export default function LandingPage() {
         </div>
       </section>
 
-      {/* ================= UPDATED FOOTER ================= */}
-      <footer className="bg-gradient-to-br from-gray-950 via-gray-900 to-black text-white pt-24 pb-10 relative overflow-hidden">
-        {/* Soft Background Glow */}
-        <div className="absolute inset-0 opacity-20 pointer-events-none">
-          <div className="absolute top-10 left-10 w-80 h-80 bg-blue-500 rounded-full blur-3xl"></div>
-          <div className="absolute bottom-10 right-10 w-80 h-80 bg-purple-500 rounded-full blur-3xl"></div>
-        </div>
-
-        <div className="relative z-10 max-w-7xl mx-auto px-6">
-          {/* Main Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-14">
-            {/* Brand Section */}
-            <div>
-              <h3 className="text-3xl font-bold text-cyan-400 mb-5">
-                SwadPoint 🍽️
-              </h3>
-              <p className="text-gray-400 leading-relaxed mb-6">
-                Empowering restaurants with smart automation and digital
-                control. Simplify operations. Increase efficiency. Grow smarter.
-              </p>
-            </div>
-            {/* Quick Links */}
-            <div>
-              <h4 className="text-xl font-semibold mb-6">Quick Links</h4>
-              <ul className="space-y-4 text-gray-400">
-                {footerLinks.map((item, i) => (
-                  <li key={i}>
-                    <button
-                      type="button"
-                      onClick={() => navigateFromFooter(item.path)}
-                      className="text-left hover:text-cyan-400 transition-colors duration-300"
-                    >
-                      {item.name}
-                    </button>
-                  </li>
-                ))}
-              </ul>
-            </div>
-            {/* Contact */}
-            <div>
-              <h4 className="text-xl font-semibold mb-6">Contact</h4>
-              <ul className="space-y-4 text-gray-400">
-                <li>📍 Surat, Gujarat</li>
-                <li>📞 +91 98765 43210</li>
-                <li>📧 support@swadpoint.com</li>
-                <li>🕒 Mon – Sat | 10:00 AM – 11:00 PM</li>
-              </ul>
-            </div>
-            {/* Newsletter */}
-            <div>
-              <h4 className="text-xl font-semibold mb-6">Stay Updated</h4>
-              <p className="text-gray-400 mb-6">
-                Subscribe to receive product updates, feature releases, and
-                platform news.{" "}
-              </p>
-
-              <div className="flex overflow-hidden rounded-full border border-white/20">
-                <input
-                  type="email"
-                  placeholder="Enter your email"
-                  className="px-5 py-3 bg-white/10 text-sm focus:outline-none w-full"
-                />
-                <button className="px-6 bg-gradient-to-r from-blue-500 to-cyan-500 font-semibold hover:opacity-90 transition-all">
-                  Subscribe
-                </button>
-              </div>
-
-              {/* Payment Icons */}
-              <div className="flex gap-4 mt-6 text-gray-400 text-xl"></div>
-            </div>
-          </div>
-
-          {/* Divider */}
-          <div className="border-t border-white/10 mt-16 pt-6 text-center text-gray-500 text-sm">
-            © {new Date().getFullYear()} SwadPoint Technologies. All rights
-            reserved.
-          </div>
-        </div>
-      </footer>
+      <MarketingFooter />
     </div>
   );
 }

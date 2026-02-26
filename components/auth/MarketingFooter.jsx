@@ -303,8 +303,6 @@ SwadPoint Website`,
               ))}
             </ul>
           </div>
-
-          {/* Contact */}
           <div>
             <h4 className="text-xl font-semibold mb-6">Contact</h4>
             <ul className="space-y-4 text-gray-400">
@@ -312,7 +310,9 @@ SwadPoint Website`,
               <li>+91 98765 43210</li>
               <li>
                 <a
-                  href="mailto:support@swadpoint.com"
+                  href="https://mail.google.com/mail/?view=cm&fs=1&to=support@swadpoint.com"
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="hover:text-cyan-400 transition-colors"
                 >
                   support@swadpoint.com

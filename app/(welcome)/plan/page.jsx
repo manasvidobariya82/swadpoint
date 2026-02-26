@@ -649,8 +649,8 @@ export default function PlanPage() {
                 </div>
               </div>
               <p className="text-gray-700 text-sm">
-                "Our sales increased by 35% after implementing AR menus.
-                Customers love seeing dishes in 3D before ordering!"
+                &ldquo;Our sales increased by 35% after implementing AR menus.
+                Customers love seeing dishes in 3D before ordering!&rdquo;
               </p>
             </div>
             <div className="bg-white rounded-xl shadow p-6">
@@ -664,8 +664,8 @@ export default function PlanPage() {
                 </div>
               </div>
               <p className="text-gray-700 text-sm">
-                "The Professional plan was perfect for our 3 locations. The AR
-                features have reduced ordering time by 40%."
+                &ldquo;The Professional plan was perfect for our 3 locations. The AR
+                features have reduced ordering time by 40%.&rdquo;
               </p>
             </div>
             <div className="bg-white rounded-xl shadow p-6">
@@ -681,8 +681,8 @@ export default function PlanPage() {
                 </div>
               </div>
               <p className="text-gray-700 text-sm">
-                "Enterprise solution helped our franchise maintain consistent AR
-                experience across 15 locations. Game changer!"
+                &ldquo;Enterprise solution helped our franchise maintain consistent AR
+                experience across 15 locations. Game changer!&rdquo;
               </p>
             </div>
           </div>
@@ -692,42 +692,44 @@ export default function PlanPage() {
         <div className="mb-16">
           <div className="text-center mb-8">
             <h2 className="text-3xl font-bold text-gray-900 mb-4">
-              Frequently Asked Questions
+              Pricing FAQ
             </h2>
+            <p className="text-gray-600">
+              Plan selection, billing cycles, and upgrade flow explained.
+            </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 gap-4">
             {[
               {
-                q: "How long is the free trial?",
-                a: "All paid plans come with a 14-day free trial. The Starter plan is completely free forever with limited features.",
+                q: "How does trial work on paid plans?",
+                a: "Professional and Business include a 14-day trial. Starter is free forever with limited modules.",
               },
               {
-                q: "Can I change plans later?",
-                a: "Yes! You can upgrade or downgrade at any time. Changes take effect at the start of your next billing cycle.",
+                q: "Can I switch monthly to yearly later?",
+                a: "Yes. You can switch anytime. Yearly billing applies discounted pricing from next cycle.",
               },
               {
-                q: "Do you offer discounts for annual billing?",
-                a: "Yes! Save 20% when you pay annually on Professional and Business plans. Contact us for enterprise annual pricing.",
+                q: "What if my outlet count increases?",
+                a: "You can upgrade plan instantly, and all new outlet limits apply without data migration.",
               },
               {
-                q: "What happens if I exceed my plan limits?",
-                a: "We'll notify you before you reach limits. You can upgrade anytime, or purchase add-ons for specific features.",
+                q: "Do you provide GST invoice and billing history?",
+                a: "Yes. Every payment invoice and cycle history is available from billing settings.",
               },
               {
-                q: "Is setup included?",
-                a: "Yes! All plans include initial setup assistance. Professional and higher plans include priority onboarding.",
-              },
-              {
-                q: "Can I cancel anytime?",
-                a: "Absolutely. Cancel anytime from your dashboard. No hidden fees or contracts.",
+                q: "Can I cancel without lock-in?",
+                a: "Yes. There is no long-term lock-in. You can cancel or downgrade from account settings.",
               },
             ].map((faq, index) => (
-              <div key={index} className="bg-white rounded-lg shadow p-6">
-                <h4 className="text-base font-semibold text-gray-900 mb-3 flex items-center">
-                  <FaCheck className="text-green-500 mr-2" />
+              <div
+                key={index}
+                className="rounded-xl border border-emerald-100 bg-white p-5 shadow-sm"
+              >
+                <h4 className="mb-2 flex items-center text-base font-semibold text-gray-900">
+                  <FaArrowRight className="mr-2 text-emerald-500" />
                   {faq.q}
                 </h4>
-                <p className="text-gray-600 text-sm">{faq.a}</p>
+                <p className="pl-6 text-sm text-gray-600">{faq.a}</p>
               </div>
             ))}
           </div>

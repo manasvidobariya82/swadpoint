@@ -42,10 +42,8 @@ import { TbSalad } from "react-icons/tb";
 export default function FeaturesPage() {
   const router = useRouter();
   const [activeFeature, setActiveFeature] = useState(0);
-  const [isVisible, setIsVisible] = useState(false);
 
   useEffect(() => {
-    setIsVisible(true);
     const interval = setInterval(() => {
       setActiveFeature((prev) => (prev + 1) % 6);
     }, 3000);
@@ -261,20 +259,20 @@ export default function FeaturesPage() {
   // FAQ Data specific to AR Food Tech
   const faqs = [
     {
-      question: "Is SwadPoint commission-free?",
-      answer: "Yes. You keep 100% of your revenue and customer data.",
+      question: "Can customers order without installing any app?",
+      answer: "Yes. QR opens directly in browser and customers can order instantly.",
     },
     {
-      question: "Do customers need an app?",
-      answer: "No. Orders work directly from the browser after QR scan.",
+      question: "Will AR menus work on budget Android phones?",
+      answer: "Yes. The menu degrades gracefully and keeps ordering smooth on low-end devices too.",
     },
     {
-      question: "Can I manage multiple outlets?",
-      answer: "Yes. One dashboard controls all branches.",
+      question: "Can kitchen and billing teams see updates in real time?",
+      answer: "Yes. Status changes sync instantly across order, billing, and admin views.",
     },
     {
-      question: "Is it secure?",
-      answer: "Yes. Payments and data are fully encrypted.",
+      question: "Can we manage different menus by outlet or timing?",
+      answer: "Yes. You can control category, item availability, and pricing by branch and schedule.",
     },
   ];
 
@@ -690,25 +688,29 @@ export default function FeaturesPage() {
         <div className="mb-12">
           <div className="text-center mb-12">
             <h2 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-              SwadPoint Frequently Asked Questions
+              Feature FAQ
             </h2>
             <p className="text-gray-600 max-w-2xl mx-auto">
-              Everything you need to know about our smart restaurant automation
-              platform.
+              Practical answers about QR, ordering flow, and multi-device operations.
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="space-y-4">
             {faqs.map((faq, index) => (
               <div
                 key={index}
-                className="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-shadow border border-purple-50"
+                className="relative overflow-hidden rounded-2xl border border-blue-100 bg-white p-6 shadow-md"
               >
-                <h4 className="text-xl font-bold text-gray-900 mb-3 flex items-center gap-2">
-                  <FaHandSparkles className="text-purple-500" />
-                  {faq.question}
-                </h4>
-                <p className="text-gray-600">{faq.answer}</p>
+                <div className="absolute left-0 top-0 h-full w-1 bg-gradient-to-b from-blue-500 to-cyan-500" />
+                <div className="ml-2">
+                  <div className="mb-3 flex items-center gap-3">
+                    <span className="inline-flex h-7 w-7 items-center justify-center rounded-full bg-blue-50 text-xs font-bold text-blue-700">
+                      {index + 1}
+                    </span>
+                    <h4 className="text-lg font-bold text-gray-900">{faq.question}</h4>
+                  </div>
+                  <p className="text-gray-600">{faq.answer}</p>
+                </div>
               </div>
             ))}
           </div>

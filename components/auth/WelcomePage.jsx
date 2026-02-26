@@ -1,12 +1,13 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 
 export default function LandingPage() {
   const router = useRouter();
   const scrollRef = useRef(null);
+  const [activeFaq, setActiveFaq] = useState(0);
 
   // Infinite scroll effect for AR cards
   useEffect(() => {
@@ -109,26 +110,55 @@ export default function LandingPage() {
 
   const faqs = [
     {
-      q: "Is SwadPoint commission-free?",
-      a: "Yes. You keep 100% of your revenue and customer data.",
+      q: "How fast can we launch SwadPoint in our restaurant?",
+      a: "Typical setup takes 1-2 days including QR creation, menu upload, and payment setup.",
     },
     {
-      q: "Does it support multiple outlets?",
-      a: "Yes. Perfect for franchises and chains.",
+      q: "Can dine-in and takeaway orders run together?",
+      a: "Yes. Both flows run from the same dashboard with separate status tracking.",
     },
     {
-      q: "Do customers need an app?",
-      a: "No. Works directly from the browser.",
+      q: "Will staff need technical training?",
+      a: "No. Staff can start with a quick walkthrough and role-based access controls.",
     },
     {
-      q: "How does order tracking work?",
-      a: "Orders are updated in real-time from “Preparing” to “Completed,” visible to both customers and admins.",
+      q: "Can we customize branding in the customer menu?",
+      a: "Yes. You can apply your own logo, section names, and menu presentation style.",
     },
     {
-      q: "Is the system cloud-based?",
-      a: "Yes. You can access your dashboard anytime, anywhere from any device.",
+      q: "What support do we get after going live?",
+      a: "You get ongoing support for billing setup, QR issues, and order workflow improvements.",
     },
   ];
+  const footerLinks = [
+    { name: "Home", path: "/welcome" },
+    { name: "Features", path: "/features" },
+    { name: "Plan", path: "/plan" },
+    { name: "About Us", path: "/about-us" },
+  ];
+
+  const navigateFromFooter = (path) => {
+    if (typeof window === "undefined") return;
+
+    const currentPath = window.location.pathname;
+    if (currentPath === path) {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      const main = document.querySelector("main");
+      if (main && typeof main.scrollTo === "function") {
+        main.scrollTo({ top: 0, behavior: "smooth" });
+      }
+      return;
+    }
+
+    router.push(path);
+    window.setTimeout(() => {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      const main = document.querySelector("main");
+      if (main && typeof main.scrollTo === "function") {
+        main.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    }, 100);
+  };
 
   return (
     <div className="font-sans bg-white text-gray-900">
@@ -485,14 +515,14 @@ export default function LandingPage() {
       </section>
 
       {/* ================= FAQ SECTION ================= */}
-      <section className="py-28 bg-white">
+      <section className="bg-gradient-to-b from-white to-slate-50 py-24">
         <div className="max-w-4xl mx-auto px-6">
           <div className="text-center mb-16">
             <h2 className="text-4xl font-bold text-gray-900 mb-6">
               Frequently Asked Questions
             </h2>
             <p className="text-xl text-gray-600">
-              Everything you need to know about SwadPoint{" "}
+              Quick answers for restaurants evaluating SwadPoint
             </p>
           </div>
 
@@ -500,15 +530,27 @@ export default function LandingPage() {
             {faqs.map((item, index) => (
               <div
                 key={index}
-                className="group bg-gradient-to-r from-gray-50 to-white p-8 rounded-3xl border border-gray-100 hover:border-blue-200 hover:shadow-xl transition-all duration-300 cursor-pointer"
+                className={`rounded-2xl border bg-white p-6 shadow-sm transition-all duration-300 ${
+                  activeFaq === index
+                    ? "border-blue-300 shadow-lg"
+                    : "border-gray-200 hover:border-blue-200"
+                }`}
               >
-                <div className="flex justify-between items-start">
-                  <h4 className="text-xl font-bold text-gray-900 group-hover:text-blue-600 transition-colors">
-                    {item.q}
-                  </h4>
-                  <span className="text-2xl text-gray-400 group-hover:text-blue-500 transition-colors"></span>
-                </div>
-                <p className="mt-4 text-gray-600 leading-relaxed">{item.a}</p>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setActiveFaq((prev) => (prev === index ? -1 : index))
+                  }
+                  className="flex w-full items-start justify-between gap-4 text-left"
+                >
+                  <h4 className="text-xl font-bold text-gray-900">{item.q}</h4>
+                  <span className="text-2xl font-bold text-blue-500">
+                    {activeFaq === index ? "-" : "+"}
+                  </span>
+                </button>
+                {activeFaq === index && (
+                  <p className="mt-4 text-gray-600 leading-relaxed">{item.a}</p>
+                )}
               </div>
             ))}
           </div>
@@ -549,19 +591,15 @@ export default function LandingPage() {
             <div>
               <h4 className="text-xl font-semibold mb-6">Quick Links</h4>
               <ul className="space-y-4 text-gray-400">
-                {[
-                  { name: "Home", path: "/Header" },
-                  { name: "Features", path: "/features" },
-                  { name: "Plan", path: "/plan" },
-                  { name: "About Us", path: "/about-us" },
-                ].map((item, i) => (
+                {footerLinks.map((item, i) => (
                   <li key={i}>
-                    <Link
-                      href={item.path}
-                      className="hover:text-cyan-400 transition-colors duration-300"
+                    <button
+                      type="button"
+                      onClick={() => navigateFromFooter(item.path)}
+                      className="text-left hover:text-cyan-400 transition-colors duration-300"
                     >
                       {item.name}
-                    </Link>
+                    </button>
                   </li>
                 ))}
               </ul>

@@ -6,7 +6,6 @@ import QRCode from "react-qr-code";
 import {
   getMenu,
   getPaymentConfig,
-  getTables,
 } from "@/helper/storage";
 
 const DEFAULT_PAYMENT_CONFIG = {
@@ -84,6 +83,10 @@ function CustomerMenuContent() {
   const [cart, setCart] = useState([]);
   const [customerName, setCustomerName] = useState("");
   const [customerMobile, setCustomerMobile] = useState("");
+  const [formErrors, setFormErrors] = useState({
+    customerName: "",
+    customerMobile: "",
+  });
   const [paymentMethod, setPaymentMethod] = useState("UPI");
   const [confirmation, setConfirmation] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -104,14 +107,6 @@ function CustomerMenuContent() {
       payeeName: payeeNameParam || storedPaymentConfig.payeeName,
     });
   }, [upiIdParam, payeeNameParam]);
-
-  const isValidTable = useMemo(() => {
-    const allTables = getTables();
-    if (tableNo && allTables.length > 0) {
-      return allTables.some((table) => table.tableNo === tableNo);
-    }
-    return true;
-  }, [tableNo]);
 
   const cartTotal = useMemo(
     () => cart.reduce((sum, item) => sum + item.price * item.qty, 0),
@@ -195,15 +190,26 @@ function CustomerMenuContent() {
       return;
     }
 
-    if (!customerName.trim()) {
-      alert("Customer name is required.");
-      return;
+    const normalizedName = customerName.trim();
+    const normalizedMobile = customerMobile.replace(/\D/g, "").slice(0, 10);
+    const nextErrors = {
+      customerName: "",
+      customerMobile: "",
+    };
+
+    if (!normalizedName || normalizedName.length < 2) {
+      nextErrors.customerName = "Enter valid customer name";
     }
 
-    if (!customerMobile.trim()) {
-      alert("Mobile number is required.");
+    if (!/^\d{10}$/.test(normalizedMobile)) {
+      nextErrors.customerMobile = "Enter valid 10-digit mobile number";
+    }
+
+    if (nextErrors.customerName || nextErrors.customerMobile) {
+      setFormErrors(nextErrors);
       return;
     }
+    setFormErrors({ customerName: "", customerMobile: "" });
 
     if (paymentMethod === "UPI" && !isUpiReady) {
       alert("UPI is unavailable. Ask restaurant to configure a valid UPI ID.");
@@ -226,8 +232,8 @@ function CustomerMenuContent() {
     const order = {
       id: orderId,
       tableNo,
-      customerName: customerName.trim(),
-      customerMobile: customerMobile.trim(),
+      customerName: normalizedName,
+      customerMobile: normalizedMobile,
       items: normalizedItems,
       total: cartTotal,
       status: "Pending",
@@ -272,6 +278,7 @@ function CustomerMenuContent() {
     setCart([]);
     setCustomerName("");
     setCustomerMobile("");
+    setFormErrors({ customerName: "", customerMobile: "" });
     setIsSubmitting(false);
   };
 
@@ -286,11 +293,6 @@ function CustomerMenuContent() {
           {menuSource === "query" && (
             <p className="mt-2 text-sm font-medium text-blue-600">
               Menu loaded from QR URL.
-            </p>
-          )}
-          {!isValidTable && (
-            <p className="mt-2 text-sm font-medium text-red-600">
-              This table QR is not registered in table management.
             </p>
           )}
         </div>
@@ -387,19 +389,46 @@ function CustomerMenuContent() {
                 <input
                   type="text"
                   value={customerName}
-                  onChange={(e) => setCustomerName(e.target.value)}
+                  onChange={(e) => {
+                    setCustomerName(e.target.value);
+                    if (formErrors.customerName) {
+                      setFormErrors((prev) => ({ ...prev, customerName: "" }));
+                    }
+                  }}
                   placeholder="Customer name"
                   required
-                  className="w-full rounded-lg border px-3 py-2 text-sm font-medium text-gray-900 placeholder:text-gray-500"
+                  className={`w-full rounded-lg border px-3 py-2 text-sm font-medium text-gray-900 placeholder:text-gray-500 ${
+                    formErrors.customerName ? "border-red-500" : ""
+                  }`}
                 />
+                {formErrors.customerName && (
+                  <p className="text-xs font-medium text-red-600">
+                    {formErrors.customerName}
+                  </p>
+                )}
                 <input
                   type="tel"
                   value={customerMobile}
-                  onChange={(e) => setCustomerMobile(e.target.value)}
+                  onChange={(e) => {
+                    const digitsOnly = e.target.value.replace(/\D/g, "").slice(0, 10);
+                    setCustomerMobile(digitsOnly);
+                    if (formErrors.customerMobile) {
+                      setFormErrors((prev) => ({ ...prev, customerMobile: "" }));
+                    }
+                  }}
                   placeholder="Mobile number"
+                  inputMode="numeric"
+                  maxLength={10}
                   required
-                  className="w-full rounded-lg border px-3 py-2 text-sm font-medium text-gray-900 placeholder:text-gray-500"
+                  className={`w-full rounded-lg border px-3 py-2 text-sm font-medium text-gray-900 placeholder:text-gray-500 ${
+                    formErrors.customerMobile ? "border-red-500" : ""
+                  }`}
                 />
+                {formErrors.customerMobile && (
+                  <p className="text-xs font-medium text-red-600">
+                    {formErrors.customerMobile}
+                  </p>
+                )}
 
                 <select
                   value={paymentMethod}

@@ -1,4 +1,6 @@
-import Link from "next/link";
+"use client";
+
+import { usePathname, useRouter } from "next/navigation";
 
 const QUICK_LINKS = [
   { label: "Home", href: "/welcome" },
@@ -8,6 +10,27 @@ const QUICK_LINKS = [
 ];
 
 export default function MarketingFooter() {
+  const router = useRouter();
+  const pathname = usePathname();
+
+  const scrollPageToTop = () => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+    const main = document.querySelector("main");
+    if (main && typeof main.scrollTo === "function") {
+      main.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
+  const navigateToSection = (href) => {
+    if (pathname === href) {
+      scrollPageToTop();
+      return;
+    }
+
+    router.push(href);
+    window.setTimeout(scrollPageToTop, 100);
+  };
+
   return (
     <footer className="bg-gradient-to-br from-gray-950 via-gray-900 to-black text-white pt-24 pb-10 relative overflow-hidden">
       <div className="absolute inset-0 opacity-20 pointer-events-none">
@@ -29,12 +52,13 @@ export default function MarketingFooter() {
             <ul className="space-y-4 text-gray-400">
               {QUICK_LINKS.map((item) => (
                 <li key={item.href}>
-                  <Link
-                    href={item.href}
-                    className="hover:text-cyan-400 transition-colors duration-300"
+                  <button
+                    type="button"
+                    onClick={() => navigateToSection(item.href)}
+                    className="text-left hover:text-cyan-400 transition-colors duration-300"
                   >
                     {item.label}
-                  </Link>
+                  </button>
                 </li>
               ))}
             </ul>

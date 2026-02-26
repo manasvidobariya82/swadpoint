@@ -93,7 +93,7 @@ export default function Header({ isAuthenticated = false, user }) {
             <Button variant="primary" onClick={() => router.push("/login")}>
               Log in
             </Button>
-            <Button variant="text">Request A Demo</Button>
+            {/* <Button variant="text">Request A Demo</Button> */}
           </>
         ) : (
           <div style={styles.authSection} ref={dropdownRef}>

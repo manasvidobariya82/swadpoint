@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { getBusinessProfile } from "@/helper/businessProfile";
+import { getOrders, saveOrders } from "@/helper/storage";
 
 const toNumber = (value) => {
   const parsed = Number(value);
@@ -13,6 +14,31 @@ const normalizeText = (value) => String(value || "").trim();
 const parseTime = (value) => {
   const parsed = new Date(value).getTime();
   return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const normalizeId = (value) => String(value || "").trim();
+
+const mergeOrders = (current, incoming) => {
+  const mergedById = new Map();
+
+  (Array.isArray(current) ? current : []).forEach((order) => {
+    const id = normalizeId(order?.id);
+    if (!id) return;
+    mergedById.set(id, order);
+  });
+
+  (Array.isArray(incoming) ? incoming : []).forEach((order) => {
+    const id = normalizeId(order?.id);
+    if (!id) return;
+    mergedById.set(id, {
+      ...(mergedById.get(id) || {}),
+      ...order,
+    });
+  });
+
+  return Array.from(mergedById.values()).sort(
+    (a, b) => parseTime(b?.time) - parseTime(a?.time)
+  );
 };
 
 const formatDateTime = (value) => {
@@ -120,7 +146,9 @@ const fetchOrdersFromApi = async () => {
 };
 
 export default function Page() {
-  const [customers, setCustomers] = useState([]);
+  const [customers, setCustomers] = useState(() =>
+    deriveCustomersFromOrders(getOrders())
+  );
   const [search, setSearch] = useState("");
   const [entries, setEntries] = useState(10);
   const [page, setPage] = useState(1);
@@ -131,9 +159,11 @@ export default function Page() {
   const loadCustomers = async () => {
     try {
       const orderList = await fetchOrdersFromApi();
-      setCustomers(deriveCustomersFromOrders(orderList));
+      const merged = mergeOrders(getOrders(), orderList);
+      saveOrders(merged);
+      setCustomers(deriveCustomersFromOrders(merged));
     } catch {
-      setCustomers([]);
+      setCustomers(deriveCustomersFromOrders(getOrders()));
     } finally {
       setIsLoading(false);
     }
@@ -143,7 +173,7 @@ export default function Page() {
     const timeoutId = window.setTimeout(() => {
       loadCustomers();
     }, 0);
-    const intervalId = window.setInterval(loadCustomers, 3000);
+    const intervalId = window.setInterval(loadCustomers, 10000);
 
     return () => {
       window.clearTimeout(timeoutId);

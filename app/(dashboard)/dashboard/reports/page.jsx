@@ -37,6 +37,7 @@ import {
   AlertCircle,
   CheckCircle,
   XCircle,
+  X,
   Search,
   Star,
   Heart,
@@ -231,6 +232,28 @@ const ANALYSIS_TYPES = [
   { id: "predictive", name: "Predictive", icon: "🔮", color: "violet" },
 ];
 
+const ANALYSIS_TYPE_ACTIVE_CLASS = {
+  performance: "bg-blue-600 text-white",
+  demographics: "bg-purple-600 text-white",
+  geographic: "bg-green-600 text-white",
+  competitive: "bg-yellow-500 text-white",
+  marketing: "bg-pink-600 text-white",
+  operational: "bg-indigo-600 text-white",
+  financial: "bg-emerald-600 text-white",
+  predictive: "bg-violet-600 text-white",
+};
+
+const INITIAL_REALTIME_STATS = {
+  currentOrders: 42,
+  hourlyRevenue: 21000,
+  avgResponseTime: 2.8,
+  customerSatisfaction: 4.6,
+  systemHealth: 98,
+  peakHour: "7:00 PM",
+};
+
+const INITIAL_REALTIME_DATA = ANALYSIS_DATA.realTimeMetrics.slice(-6);
+
 export default function AdvancedAnalysisBoard() {
   // State Management
   const [selectedRange, setSelectedRange] = useState("last30");
@@ -252,42 +275,17 @@ export default function AdvancedAnalysisBoard() {
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [viewMode, setViewMode] = useState("grid");
   const [searchQuery, setSearchQuery] = useState("");
-  const [realTimeData, setRealTimeData] = useState([]);
+  const [realTimeData, setRealTimeData] = useState(() => INITIAL_REALTIME_DATA);
 
   // Real-time stats
-  const [realTimeStats, setRealTimeStats] = useState({
-    currentOrders: 0,
-    hourlyRevenue: 0,
-    avgResponseTime: 0,
-    customerSatisfaction: 0,
-    systemHealth: 100,
-    peakHour: "",
-  });
+  const [realTimeStats, setRealTimeStats] = useState(
+    () => INITIAL_REALTIME_STATS
+  );
 
   // Refs
   const intervalRef = useRef(null);
 
-  // Initialize real-time updates
-  useEffect(() => {
-    // Load initial data
-    loadInitialData();
-
-    // Setup real-time updates
-    if (autoRefresh) {
-      intervalRef.current = setInterval(() => {
-        updateRealTimeStats();
-        simulateNewData();
-      }, 3000);
-    }
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-      }
-    };
-  }, [autoRefresh]);
-
-  const loadInitialData = () => {
+  function loadInitialData() {
     // Calculate initial stats
     const totalRevenue = ANALYSIS_DATA.performanceTimeline.reduce(
       (sum, item) => sum + item.revenue,
@@ -322,9 +320,9 @@ export default function AdvancedAnalysisBoard() {
 
     // Initialize real-time data
     setRealTimeData(ANALYSIS_DATA.realTimeMetrics.slice(-6));
-  };
+  }
 
-  const updateRealTimeStats = () => {
+  function updateRealTimeStats() {
     setRealTimeStats((prev) => ({
       ...prev,
       currentOrders: Math.max(
@@ -347,9 +345,9 @@ export default function AdvancedAnalysisBoard() {
         Math.max(90, prev.systemHealth + (Math.random() > 0.5 ? 0.5 : -0.5))
       ),
     }));
-  };
+  }
 
-  const simulateNewData = () => {
+  function simulateNewData() {
     const now = new Date();
     const hour = now.getHours();
     const minute = now.getMinutes();
@@ -366,7 +364,23 @@ export default function AdvancedAnalysisBoard() {
       const newData = [...prev, newDataPoint];
       return newData.slice(-12); // Keep last 12 data points
     });
-  };
+  }
+
+  // Initialize real-time updates
+  useEffect(() => {
+    if (autoRefresh) {
+      intervalRef.current = setInterval(() => {
+        updateRealTimeStats();
+        simulateNewData();
+      }, 3000);
+    }
+
+    return () => {
+      if (intervalRef.current) {
+        clearInterval(intervalRef.current);
+      }
+    };
+  }, [autoRefresh]);
 
   // Handle date range change
   const handleRangeChange = (range) => {
@@ -1674,7 +1688,8 @@ export default function AdvancedAnalysisBoard() {
               onClick={() => setSelectedAnalysis(type.id)}
               className={`px-4 py-3 rounded-lg flex items-center gap-2 transition-all ${
                 selectedAnalysis === type.id
-                  ? `bg-${type.color}-600 text-white`
+                  ? ANALYSIS_TYPE_ACTIVE_CLASS[type.id] ||
+                    "bg-blue-600 text-white"
                   : darkMode
                   ? "bg-gray-700 text-gray-300 hover:bg-gray-600"
                   : "bg-gray-100 text-gray-700 hover:bg-gray-200"

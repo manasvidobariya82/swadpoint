@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { downloadInvoice, printInvoice } from "@/helper/invoice";
+import { getOrders, saveOrders } from "@/helper/storage";
 
 const fetchOrdersFromApi = async () => {
   const response = await fetch("/api/orders", { cache: "no-store" });
@@ -22,6 +23,36 @@ const updateOrderStatus = async (id, status) => {
 const toNumber = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const toTimestamp = (value) => {
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const normalizeId = (value) => String(value || "").trim();
+
+const mergeOrders = (current, incoming) => {
+  const mergedById = new Map();
+
+  (Array.isArray(current) ? current : []).forEach((order) => {
+    const id = normalizeId(order?.id);
+    if (!id) return;
+    mergedById.set(id, order);
+  });
+
+  (Array.isArray(incoming) ? incoming : []).forEach((order) => {
+    const id = normalizeId(order?.id);
+    if (!id) return;
+    mergedById.set(id, {
+      ...(mergedById.get(id) || {}),
+      ...order,
+    });
+  });
+
+  return Array.from(mergedById.values()).sort(
+    (a, b) => toTimestamp(b?.time) - toTimestamp(a?.time)
+  );
 };
 
 const buildInvoiceFromOrder = (order) => {
@@ -60,16 +91,23 @@ const buildInvoiceFromOrder = (order) => {
 };
 
 export default function OrdersPage() {
-  const [orders, setOrders] = useState([]);
+  const [orders, setOrders] = useState(() => getOrders());
   const [loading, setLoading] = useState(true);
   const [actionLoadingId, setActionLoadingId] = useState("");
 
   const loadOrders = async () => {
     try {
       const list = await fetchOrdersFromApi();
-      setOrders(Array.isArray(list) ? list : []);
+      setOrders((prev) => {
+        const merged = mergeOrders(prev, list);
+        saveOrders(merged);
+        return merged;
+      });
     } catch {
-      setOrders([]);
+      const cached = getOrders();
+      if (cached.length > 0) {
+        setOrders(cached);
+      }
     } finally {
       setLoading(false);
     }
@@ -79,12 +117,16 @@ export default function OrdersPage() {
     const timeoutId = window.setTimeout(() => {
       loadOrders();
     }, 0);
-    const intervalId = window.setInterval(loadOrders, 3000);
+    const intervalId = window.setInterval(loadOrders, 10000);
     return () => {
       window.clearTimeout(timeoutId);
       window.clearInterval(intervalId);
     };
   }, []);
+
+  useEffect(() => {
+    saveOrders(orders);
+  }, [orders]);
 
   const pendingCount = useMemo(
     () => orders.filter((order) => order.status === "Pending").length,

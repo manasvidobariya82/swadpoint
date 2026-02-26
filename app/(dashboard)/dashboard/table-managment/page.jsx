@@ -217,9 +217,7 @@ export default function TablesPage() {
           </div>
 
           <p className="mt-3 text-sm text-gray-500">
-            QR URL format:{" "}
-            {getActiveBaseUrl() || "https://your-domain.com"}/menu?table=TABLE_NO
-            &items=[...]
+            QR contains table + menu data for direct customer ordering.
           </p>
         </div>
 
@@ -249,10 +247,6 @@ export default function TablesPage() {
 
                   <div className="mb-4 flex justify-center rounded-lg border p-4">
                     <QRCode value={currentUrl} size={170} />
-                  </div>
-
-                  <div className="mb-4 break-all rounded bg-gray-100 p-2 text-xs text-gray-600">
-                    {currentUrl}
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">

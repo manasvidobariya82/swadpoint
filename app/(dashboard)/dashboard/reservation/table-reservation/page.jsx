@@ -36,44 +36,44 @@ const getStatusClassName = (status) => {
   return "pending";
 };
 
-const DEFAULT_RESERVATIONS = [
-  {
-    id: "TR-1001",
-    name: "John Smith",
-    mobile: "9876543210",
-    date: "2024-12-25",
-    time: "19:30",
-    guests: "4",
-    status: "Confirmed",
-    notes: "Window seat preferred",
-    email: "john@example.com",
-    createdAt: "2024-12-20",
-  },
-  {
-    id: "TR-1002",
-    name: "Emma Wilson",
-    mobile: "8765432109",
-    date: "2024-12-26",
-    time: "20:00",
-    guests: "2",
-    status: "Pending",
-    notes: "Anniversary celebration",
-    email: "emma@example.com",
-    createdAt: "2024-12-21",
-  },
-  {
-    id: "TR-1003",
-    name: "Robert Brown",
-    mobile: "7654321098",
-    date: "2024-12-24",
-    time: "18:00",
-    guests: "6",
-    status: "Cancelled",
-    notes: "Family dinner",
-    email: "robert@example.com",
-    createdAt: "2024-12-19",
-  },
-];
+// const DEFAULT_RESERVATIONS = [
+//   {
+//     id: "TR-1001",
+//     name: "John Smith",
+//     mobile: "9876543210",
+//     date: "2024-12-25",
+//     time: "19:30",
+//     guests: "4",
+//     status: "Confirmed",
+//     notes: "Window seat preferred",
+//     email: "john@example.com",
+//     createdAt: "2024-12-20",
+//   },
+//   {
+//     id: "TR-1002",
+//     name: "Emma Wilson",
+//     mobile: "8765432109",
+//     date: "2024-12-26",
+//     time: "20:00",
+//     guests: "2",
+//     status: "Pending",
+//     notes: "Anniversary celebration",
+//     email: "emma@example.com",
+//     createdAt: "2024-12-21",
+//   },
+//   {
+//     id: "TR-1003",
+//     name: "Robert Brown",
+//     mobile: "7654321098",
+//     date: "2024-12-24",
+//     time: "18:00",
+//     guests: "6",
+//     status: "Cancelled",
+//     notes: "Family dinner",
+//     email: "robert@example.com",
+//     createdAt: "2024-12-19",
+//   },
+// ];
 
 const getInitialReservations = () => {
   if (typeof window === "undefined") return DEFAULT_RESERVATIONS;

@@ -6,21 +6,80 @@ import { toast, Toaster } from "react-hot-toast";
 import { Copy, ExternalLink, Trash2 } from "lucide-react";
 import { getMenu, getTables, saveTables } from "@/helper/storage";
 
+const MENU_BASE_URL_KEY = "restaurantMenuBaseUrl";
+
+const normalizeBaseUrl = (value) => {
+  const trimmed = String(value || "").trim();
+  if (!trimmed) return "";
+
+  const isLocalCandidate =
+    /^(localhost|127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(
+      trimmed
+    ) || /^\d{1,3}(\.\d{1,3}){3}(:\d+)?$/i.test(trimmed);
+
+  const candidate = /^https?:\/\//i.test(trimmed)
+    ? trimmed
+    : `${isLocalCandidate ? "http" : "https"}://${trimmed}`;
+
+  try {
+    const parsed = new URL(candidate);
+    parsed.hash = "";
+    parsed.search = "";
+    return parsed.toString().replace(/\/$/, "");
+  } catch {
+    return "";
+  }
+};
+
+const isLocalHostUrl = (value) => {
+  try {
+    const { hostname } = new URL(value);
+    return (
+      hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1"
+    );
+  } catch {
+    return false;
+  }
+};
+
 export default function TablesPage() {
-  const [tables, setTables] = useState([]);
-  const [menuItems, setMenuItems] = useState([]);
+  const [tables, setTables] = useState(() => getTables());
+  const [menuItems] = useState(() => getMenu());
   const [tableNo, setTableNo] = useState("");
-  const [baseUrl, setBaseUrl] = useState("");
+  const [baseUrl, setBaseUrl] = useState(() => {
+    if (typeof window === "undefined") return "";
+
+    const storedBaseUrl = normalizeBaseUrl(
+      localStorage.getItem(MENU_BASE_URL_KEY) || ""
+    );
+    const currentOrigin = normalizeBaseUrl(window.location.origin);
+    return storedBaseUrl || currentOrigin;
+  });
 
   useEffect(() => {
-    setBaseUrl(window.location.origin);
-    setTables(getTables());
-    setMenuItems(getMenu());
-  }, []);
+    const normalized = normalizeBaseUrl(baseUrl);
+
+    if (!baseUrl.trim()) {
+      localStorage.removeItem(MENU_BASE_URL_KEY);
+      return;
+    }
+
+    if (normalized) {
+      localStorage.setItem(MENU_BASE_URL_KEY, normalized);
+    }
+  }, [baseUrl]);
+
+  const getActiveBaseUrl = () => {
+    const browserOrigin =
+      typeof window !== "undefined" ? window.location.origin : "";
+
+    return (
+      normalizeBaseUrl(baseUrl) || normalizeBaseUrl(browserOrigin) || ""
+    );
+  };
 
   const buildMenuUrl = (tableNumber) => {
-    const origin =
-      baseUrl || (typeof window !== "undefined" ? window.location.origin : "");
+    const origin = getActiveBaseUrl();
     const params = new URLSearchParams();
     params.set("table", tableNumber);
 
@@ -113,9 +172,41 @@ export default function TablesPage() {
             </button>
           </div>
 
+          <div className="mt-4 space-y-2">
+            <label className="block text-sm font-medium text-gray-700">
+              Phone Access URL (for QR links)
+            </label>
+            <div className="flex flex-col gap-2 md:flex-row">
+              <input
+                type="text"
+                value={baseUrl}
+                onChange={(e) => setBaseUrl(e.target.value)}
+                placeholder="https://your-domain.com or http://192.168.1.10:3000"
+                className="flex-1 rounded-lg border px-4 py-2 text-sm"
+              />
+              <button
+                onClick={() => setBaseUrl(window.location.origin)}
+                className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+              >
+                Use Current URL
+              </button>
+            </div>
+            <p className="text-xs text-gray-500">
+              Use your LAN IP or deployed domain. Do not use localhost for
+              mobile QR scans.
+            </p>
+            {isLocalHostUrl(getActiveBaseUrl()) && (
+              <p className="text-xs font-medium text-red-600">
+                Current QR base URL uses localhost, which will not open on other
+                phones.
+              </p>
+            )}
+          </div>
+
           <p className="mt-3 text-sm text-gray-500">
-            QR URL format: {baseUrl || "https://your-domain.com"}/menu?table=
-            TABLE_NO&items=[...]
+            QR URL format:{" "}
+            {getActiveBaseUrl() || "https://your-domain.com"}/menu?table=TABLE_NO
+            &items=[...]
           </p>
         </div>
 

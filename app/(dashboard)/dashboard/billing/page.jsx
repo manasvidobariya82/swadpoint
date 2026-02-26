@@ -6,6 +6,7 @@ import {
   getPaymentConfig,
   savePaymentConfig,
 } from "@/helper/storage";
+import { downloadInvoice, printInvoice } from "@/helper/invoice";
 
 const createUpiUrl = (upiId, payeeName, amount = 1) =>
   `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(
@@ -18,8 +19,62 @@ const fetchPaymentsFromApi = async () => {
   return response.json();
 };
 
+const fetchOrdersFromApi = async () => {
+  const response = await fetch("/api/orders", { cache: "no-store" });
+  if (!response.ok) throw new Error("Failed to fetch orders");
+  return response.json();
+};
+
+const toNumber = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const buildInvoiceFromPayment = (payment, order) => {
+  const orderItems = Array.isArray(order?.items) ? order.items : [];
+  const paymentAmount = toNumber(payment?.amount);
+  const items =
+    orderItems.length > 0
+      ? orderItems.map((item) => {
+          const qty = Math.max(1, toNumber(item?.qty || 1));
+          const lineTotal = toNumber(item?.lineTotal || 0);
+          const unitPrice =
+            lineTotal > 0 ? lineTotal / qty : toNumber(item?.price || 0);
+          return {
+            name: item?.name || "Item",
+            qty,
+            unitPrice,
+            lineTotal: lineTotal > 0 ? lineTotal : unitPrice * qty,
+          };
+        })
+      : [
+          {
+            name: "Order Payment",
+            qty: 1,
+            unitPrice: paymentAmount,
+            lineTotal: paymentAmount,
+          },
+        ];
+
+  return {
+    invoiceId: `INV-${String(payment?.id || Date.now()).replace(/[^\w-]/g, "")}`,
+    orderId: payment?.orderId || order?.id || "-",
+    paymentId: payment?.id || "-",
+    issuedAt: payment?.timestamp || order?.time || new Date().toISOString(),
+    tableNo: payment?.tableNo || order?.tableNo || "NA",
+    customerName: payment?.customerName || order?.customerName || "Walk-in",
+    customerMobile: payment?.customerMobile || order?.customerMobile || "-",
+    paymentMethod: payment?.paymentMethod || order?.paymentMethod || "-",
+    paymentStatus: payment?.status || order?.paymentStatus || "-",
+    orderStatus: order?.status || "-",
+    totalAmount: paymentAmount || toNumber(order?.total || 0),
+    items,
+  };
+};
+
 export default function BillingPage() {
   const [payments, setPayments] = useState([]);
+  const [ordersById, setOrdersById] = useState({});
   const [paymentConfig, setPaymentConfig] = useState({
     upiId: "swadpoint@upi",
     payeeName: "SwadPoint Restaurant",
@@ -28,15 +83,31 @@ export default function BillingPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   const loadData = async () => {
-    try {
-      const list = await fetchPaymentsFromApi();
+    const [paymentsResult, ordersResult] = await Promise.allSettled([
+      fetchPaymentsFromApi(),
+      fetchOrdersFromApi(),
+    ]);
+
+    if (paymentsResult.status === "fulfilled") {
+      const list = paymentsResult.value;
       setPayments(Array.isArray(list) ? list : []);
-    } catch {
+    } else {
       setPayments([]);
-    } finally {
-      setIsLoading(false);
     }
 
+    if (ordersResult.status === "fulfilled") {
+      const orderList = Array.isArray(ordersResult.value) ? ordersResult.value : [];
+      const nextLookup = orderList.reduce((acc, order) => {
+        const id = String(order?.id || "").trim();
+        if (id) acc[id] = order;
+        return acc;
+      }, {});
+      setOrdersById(nextLookup);
+    } else {
+      setOrdersById({});
+    }
+
+    setIsLoading(false);
     setPaymentConfig(getPaymentConfig());
   };
 
@@ -226,10 +297,17 @@ export default function BillingPage() {
                     <th className="px-3 py-2 text-left font-semibold text-gray-600">
                       Time
                     </th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">
+                      Invoice
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
-                  {filteredPayments.map((payment) => (
+                  {filteredPayments.map((payment) => {
+                    const matchingOrder = ordersById[String(payment.orderId || "")] || null;
+                    const invoicePayload = buildInvoiceFromPayment(payment, matchingOrder);
+
+                    return (
                     <tr key={payment.id}>
                       <td className="px-3 py-2 text-gray-700">{payment.id}</td>
                       <td className="px-3 py-2 text-gray-700">
@@ -260,8 +338,31 @@ export default function BillingPage() {
                       <td className="px-3 py-2 text-gray-700">
                         {new Date(payment.timestamp).toLocaleString()}
                       </td>
+                      <td className="px-3 py-2">
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const success = printInvoice(invoicePayload);
+                              if (!success) {
+                                alert("Please allow popups to print invoice.");
+                              }
+                            }}
+                            className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-100"
+                          >
+                            Print
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => downloadInvoice(invoicePayload)}
+                            className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-100"
+                          >
+                            Download
+                          </button>
+                        </div>
+                      </td>
                     </tr>
-                  ))}
+                  )})}
                 </tbody>
               </table>
             </div>

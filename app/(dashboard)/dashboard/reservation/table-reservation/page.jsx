@@ -279,6 +279,76 @@ import {
   Download,
   Printer,
 } from "lucide-react";
+import { getBusinessProfile } from "@/helper/businessProfile";
+
+const csvEscape = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+
+const escapeHtml = (value) =>
+  String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+
+const getStatusClassName = (status) => {
+  const normalized = String(status || "").toLowerCase();
+  if (normalized === "confirmed") return "confirmed";
+  if (normalized === "cancelled") return "cancelled";
+  return "pending";
+};
+
+const DEFAULT_RESERVATIONS = [
+  {
+    id: "TR-1001",
+    name: "John Smith",
+    mobile: "9876543210",
+    date: "2024-12-25",
+    time: "19:30",
+    guests: "4",
+    status: "Confirmed",
+    notes: "Window seat preferred",
+    email: "john@example.com",
+    createdAt: "2024-12-20",
+  },
+  {
+    id: "TR-1002",
+    name: "Emma Wilson",
+    mobile: "8765432109",
+    date: "2024-12-26",
+    time: "20:00",
+    guests: "2",
+    status: "Pending",
+    notes: "Anniversary celebration",
+    email: "emma@example.com",
+    createdAt: "2024-12-21",
+  },
+  {
+    id: "TR-1003",
+    name: "Robert Brown",
+    mobile: "7654321098",
+    date: "2024-12-24",
+    time: "18:00",
+    guests: "6",
+    status: "Cancelled",
+    notes: "Family dinner",
+    email: "robert@example.com",
+    createdAt: "2024-12-19",
+  },
+];
+
+const getInitialReservations = () => {
+  if (typeof window === "undefined") return DEFAULT_RESERVATIONS;
+
+  try {
+    const savedData = localStorage.getItem("tableReservations");
+    if (!savedData) return DEFAULT_RESERVATIONS;
+    const parsedData = JSON.parse(savedData);
+    return Array.isArray(parsedData) ? parsedData : DEFAULT_RESERVATIONS;
+  } catch {
+    return DEFAULT_RESERVATIONS;
+  }
+};
 
 export default function TableReservationPage() {
   // ================= STATE =================
@@ -289,44 +359,7 @@ export default function TableReservationPage() {
   const [search, setSearch] = useState("");
   const [notification, setNotification] = useState(null);
 
-  const [data, setData] = useState([
-    {
-      id: "TR-1001",
-      name: "John Smith",
-      mobile: "9876543210",
-      date: "2024-12-25",
-      time: "19:30",
-      guests: "4",
-      status: "Confirmed",
-      notes: "Window seat preferred",
-      email: "john@example.com",
-      createdAt: "2024-12-20",
-    },
-    {
-      id: "TR-1002",
-      name: "Emma Wilson",
-      mobile: "8765432109",
-      date: "2024-12-26",
-      time: "20:00",
-      guests: "2",
-      status: "Pending",
-      notes: "Anniversary celebration",
-      email: "emma@example.com",
-      createdAt: "2024-12-21",
-    },
-    {
-      id: "TR-1003",
-      name: "Robert Brown",
-      mobile: "7654321098",
-      date: "2024-12-24",
-      time: "18:00",
-      guests: "6",
-      status: "Cancelled",
-      notes: "Family dinner",
-      email: "robert@example.com",
-      createdAt: "2024-12-19",
-    },
-  ]);
+  const [data, setData] = useState(() => getInitialReservations());
 
   const [form, setForm] = useState({
     name: "",
@@ -340,13 +373,6 @@ export default function TableReservationPage() {
   });
 
   // ================= LOCALSTORAGE =================
-  useEffect(() => {
-    const savedData = localStorage.getItem("tableReservations");
-    if (savedData) {
-      setData(JSON.parse(savedData));
-    }
-  }, []);
-
   useEffect(() => {
     localStorage.setItem("tableReservations", JSON.stringify(data));
   }, [data]);
@@ -507,35 +533,102 @@ export default function TableReservationPage() {
 
   // ================= EXPORT =================
   const exportData = () => {
-    const csvContent =
-      "data:text/csv;charset=utf-8," +
-      ["ID,Name,Mobile,Email,Date,Time,Guests,Status,Notes,Created At"]
-        .concat(
-          data.map(
-            (d) =>
-              `"${d.id}","${d.name}","${d.mobile}","${d.email}","${d.date}","${d.time}","${d.guests}","${d.status}","${d.notes}","${d.createdAt}"`
-          )
-        )
-        .join("\n");
+    const business = getBusinessProfile();
+    const metadataRows = [
+      ["Report", "Table Reservation Export"],
+      ["Generated At", new Date().toLocaleString()],
+      ["Restaurant", business.brandName],
+      ["Branch", business.branchName],
+      ["Owner", business.ownerName],
+      ["Phone", business.supportPhone],
+      ["Email", business.supportEmail],
+      ["City", business.city],
+      ["Address", business.address],
+      ["Website", business.website],
+      ["GST", business.gstNumber],
+    ].filter((row) => row[1]);
 
+    const csvLines = [
+      ...metadataRows.map((row) => row.map(csvEscape).join(",")),
+      "",
+      "ID,Name,Mobile,Email,Date,Time,Guests,Status,Notes,Created At",
+      ...data.map((d) =>
+        [
+          d.id,
+          d.name,
+          d.mobile,
+          d.email,
+          d.date,
+          d.time,
+          d.guests,
+          d.status,
+          d.notes,
+          d.createdAt,
+        ]
+          .map(csvEscape)
+          .join(",")
+      ),
+    ];
+
+    const blob = new Blob([csvLines.join("\n")], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.href = encodeURI(csvContent);
+    link.href = url;
     link.download = "reservations.csv";
     link.click();
+    URL.revokeObjectURL(url);
 
     showNotification("Data exported successfully!");
   };
 
   // ================= PRINT =================
   const printReservations = () => {
+    const business = getBusinessProfile();
     const printWindow = window.open("", "_blank");
+    if (!printWindow) {
+      showNotification("Unable to open print window", "error");
+      return;
+    }
+
+    const contactParts = [
+      business.supportPhone ? `Phone: ${escapeHtml(business.supportPhone)}` : "",
+      business.supportEmail ? `Email: ${escapeHtml(business.supportEmail)}` : "",
+      business.website ? `Web: ${escapeHtml(business.website)}` : "",
+    ].filter(Boolean);
+
+    const addressLine = [business.address, business.city]
+      .map((value) => escapeHtml(value))
+      .filter(Boolean)
+      .join(", ");
+
+    const reservationRows = data
+      .map(
+        (d) => `
+        <tr>
+          <td>${escapeHtml(d.id)}</td>
+          <td>${escapeHtml(d.name)}</td>
+          <td>${escapeHtml(d.date)}</td>
+          <td>${escapeHtml(d.time)}</td>
+          <td>${escapeHtml(d.guests)}</td>
+          <td class="${getStatusClassName(d.status)}">${escapeHtml(d.status)}</td>
+          <td>${escapeHtml(d.mobile)}</td>
+        </tr>
+      `
+      )
+      .join("");
+
     printWindow.document.write(`
       <html>
         <head>
           <title>Reservation Report</title>
           <style>
             body { font-family: Arial, sans-serif; padding: 20px; }
-            h1 { color: #1e40af; }
+            h1 { color: #1e3a8a; margin-bottom: 4px; }
+            h2 { color: #1e40af; margin: 18px 0 8px; }
+            .meta { color: #334155; margin: 4px 0; }
+            .report-header { border-bottom: 2px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 16px; }
             table { width: 100%; border-collapse: collapse; margin-top: 20px; }
             th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
             th { background-color: #f8fafc; }
@@ -545,8 +638,27 @@ export default function TableReservationPage() {
           </style>
         </head>
         <body>
-          <h1>Table Reservation Report</h1>
-          <p>Generated: ${new Date().toLocaleDateString()}</p>
+          <div class="report-header">
+            <h1>${escapeHtml(business.brandName)}</h1>
+            ${
+              business.branchName
+                ? `<p class="meta">${escapeHtml(business.branchName)}</p>`
+                : ""
+            }
+            ${addressLine ? `<p class="meta">${addressLine}</p>` : ""}
+            ${
+              contactParts.length > 0
+                ? `<p class="meta">${contactParts.join(" | ")}</p>`
+                : ""
+            }
+            ${
+              business.gstNumber
+                ? `<p class="meta">GST: ${escapeHtml(business.gstNumber)}</p>`
+                : ""
+            }
+          </div>
+          <h2>Table Reservation Report</h2>
+          <p>Generated: ${new Date().toLocaleString()}</p>
           <table>
             <thead>
               <tr>
@@ -555,21 +667,7 @@ export default function TableReservationPage() {
               </tr>
             </thead>
             <tbody>
-              ${data
-                .map(
-                  (d) => `
-                <tr>
-                  <td>${d.id}</td>
-                  <td>${d.name}</td>
-                  <td>${d.date}</td>
-                  <td>${d.time}</td>
-                  <td>${d.guests}</td>
-                  <td class="${d.status.toLowerCase()}">${d.status}</td>
-                  <td>${d.mobile}</td>
-                </tr>
-              `
-                )
-                .join("")}
+              ${reservationRows}
             </tbody>
           </table>
         </body>
@@ -778,7 +876,7 @@ export default function TableReservationPage() {
                               </p>
                               {row.notes && (
                                 <p className="text-xs text-slate-500 mt-2 italic">
-                                  "{row.notes}"
+                                  &ldquo;{row.notes}&rdquo;
                                 </p>
                               )}
                             </div>

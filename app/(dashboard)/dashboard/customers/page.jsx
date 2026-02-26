@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { getBusinessProfile } from "@/helper/businessProfile";
 
 const toNumber = (value) => {
   const parsed = Number(value);
@@ -169,8 +170,24 @@ export default function Page() {
 
   const exportCSV = () => {
     const csvEscape = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+    const business = getBusinessProfile();
+    const metadataRows = [
+      ["Report", "Customer Management Export"],
+      ["Generated At", new Date().toLocaleString()],
+      ["Restaurant", business.brandName],
+      ["Branch", business.branchName],
+      ["Owner", business.ownerName],
+      ["Phone", business.supportPhone],
+      ["Email", business.supportEmail],
+      ["City", business.city],
+      ["Address", business.address],
+      ["Website", business.website],
+      ["GST", business.gstNumber],
+    ].filter((row) => row[1]);
 
     const csv =
+      metadataRows.map((row) => row.map(csvEscape).join(",")).join("\n") +
+      "\n\n" +
       "ID,Name,Mobile,Visits,Orders,Loyalty,Favorite Food,Status,Total Spent,Last Order\n" +
       customers
         .map((customer) =>
@@ -197,6 +214,7 @@ export default function Page() {
     anchor.href = url;
     anchor.download = "customers.csv";
     anchor.click();
+    URL.revokeObjectURL(url);
   };
 
   return (

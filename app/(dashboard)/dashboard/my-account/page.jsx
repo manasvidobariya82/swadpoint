@@ -1,727 +1,382 @@
-// app/profile/page.jsx (or app/account/page.jsx)
 "use client";
 
-import { useState, useEffect } from "react";
-import Image from "next/image";
+import { useMemo, useState } from "react";
+import {
+  Bell,
+  Building2,
+  Globe,
+  Lock,
+  Mail,
+  MapPin,
+  Phone,
+  Save,
+  ShieldCheck,
+  Store,
+  UserCircle2,
+} from "lucide-react";
+import { Toaster, toast } from "react-hot-toast";
+import { getOrders, getPayments, getTables } from "@/helper/storage";
 
-export default function ProfilePage() {
-  // User state - Food SaaS specific
-  const [user, setUser] = useState({
-    id: 1,
-    name: "Chef Marco",
-    email: "marco@culinarypro.com",
-    phone: "+1234567890",
-    bio: "Executive Chef & Restaurant Consultant specializing in Italian cuisine",
-    avatar: "https://api.dicebear.com/7.x/avataaars/svg?seed=Chef",
-    location: "Milan, Italy",
-    website: "https://culinarypro.com",
-    joinedDate: "2022-03-15",
-    restaurant: "Ristorante Bella Vista",
-    specialty: "Italian Cuisine",
-    certifications: ["Food Safety Level 3", "Certified Chef de Cuisine"],
-    subscription: "Pro Plan",
-  });
+const ACCOUNT_STORAGE_KEY = "swadpointAccountProfile";
+const SETTINGS_STORAGE_KEY = "swadpointProductSettings";
 
-  // Form states
-  const [editMode, setEditMode] = useState(false);
-  const [formData, setFormData] = useState({ ...user });
-  const [isLoading, setIsLoading] = useState(false);
-  const [message, setMessage] = useState({ type: "", text: "" });
+const readRestaurantSettings = () => {
+  if (typeof window === "undefined") return {};
 
-  // Initialize form data
-  useEffect(() => {
-    const storedUser = localStorage.getItem("foodSaaSUser");
-    if (storedUser) {
-      const parsedUser = JSON.parse(storedUser);
-      setUser(parsedUser);
-      setFormData(parsedUser);
-    }
-  }, []);
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return {};
+    return JSON.parse(raw)?.restaurant || {};
+  } catch {
+    return {};
+  }
+};
 
-  // Handle input changes
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    setFormData((prev) => ({
+const createDefaultAccount = () => {
+  const restaurant = readRestaurantSettings();
+
+  return {
+    ownerName: "Restaurant Owner",
+    role: "Owner",
+    email: restaurant.supportEmail || "owner@swadpoint.com",
+    phone: restaurant.supportPhone || "+91 90000 00000",
+    alternatePhone: "",
+    brandName: restaurant.brandName || "SwadPoint Restaurant",
+    branchName: restaurant.branchName || "Main Branch",
+    city: restaurant.city || "Surat",
+    address: "",
+    website: "",
+    gstNumber: restaurant.gstNumber || "",
+    timezone: "Asia/Kolkata",
+    language: "English",
+    receiveOpsAlerts: true,
+    receiveProductTips: true,
+    loginEmailAlerts: true,
+    twoFactorEnabled: false,
+    requirePinForActions: true,
+  };
+};
+
+const readSavedAccount = () => {
+  const defaults = createDefaultAccount();
+  if (typeof window === "undefined") return defaults;
+
+  try {
+    const raw = localStorage.getItem(ACCOUNT_STORAGE_KEY);
+    if (!raw) return defaults;
+    return { ...defaults, ...JSON.parse(raw) };
+  } catch {
+    return defaults;
+  }
+};
+
+const toNumber = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const isToday = (value) => {
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return false;
+
+  const now = new Date();
+  return (
+    parsed.getFullYear() === now.getFullYear() &&
+    parsed.getMonth() === now.getMonth() &&
+    parsed.getDate() === now.getDate()
+  );
+};
+
+export default function MyAccountPage() {
+  const [account, setAccount] = useState(() => readSavedAccount());
+  const [isSaving, setIsSaving] = useState(false);
+
+  const metrics = useMemo(() => {
+    const orders = getOrders();
+    const tables = getTables();
+    const payments = getPayments();
+
+    const pendingOrders = orders.filter(
+      (order) => String(order?.status || "").toLowerCase() === "pending"
+    ).length;
+
+    const todayRevenue = payments
+      .filter(
+        (payment) =>
+          String(payment?.status || "").toLowerCase() === "success" &&
+          isToday(payment?.timestamp)
+      )
+      .reduce((sum, payment) => sum + toNumber(payment?.amount), 0);
+
+    const requiredFields = [
+      account.ownerName,
+      account.email,
+      account.phone,
+      account.brandName,
+      account.branchName,
+      account.city,
+    ];
+    const filled = requiredFields.filter((field) => String(field || "").trim()).length;
+    const profileCompletion = Math.round((filled / requiredFields.length) * 100);
+
+    return {
+      pendingOrders,
+      tablesConfigured: tables.length,
+      todayRevenue,
+      profileCompletion,
+    };
+  }, [account]);
+
+  const updateField = (field, value) => {
+    setAccount((prev) => ({
       ...prev,
-      [name]: value,
+      [field]: value,
     }));
   };
 
-  // Handle form submission
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setIsLoading(true);
-
-    try {
-      // Simulate API call
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Update user state
-      const updatedUser = { ...formData };
-      setUser(updatedUser);
-
-      // Save to localStorage
-      localStorage.setItem("foodSaaSUser", JSON.stringify(updatedUser));
-
-      // Show success message
-      setMessage({ type: "success", text: "Profile updated successfully!" });
-      setEditMode(false);
-
-      // Clear message after 3 seconds
-      setTimeout(() => {
-        setMessage({ type: "", text: "" });
-      }, 3000);
-    } catch (error) {
-      setMessage({ type: "error", text: "Failed to update profile" });
-    } finally {
-      setIsLoading(false);
-    }
+  const syncFromSettings = () => {
+    const restaurant = readRestaurantSettings();
+    setAccount((prev) => ({
+      ...prev,
+      brandName: restaurant.brandName || prev.brandName,
+      branchName: restaurant.branchName || prev.branchName,
+      email: restaurant.supportEmail || prev.email,
+      phone: restaurant.supportPhone || prev.phone,
+      city: restaurant.city || prev.city,
+      gstNumber: restaurant.gstNumber || prev.gstNumber,
+    }));
+    toast.success("Synced business details from Settings");
   };
 
-  // Handle avatar upload (simulated)
-  const handleAvatarUpload = async (e) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  const saveAccount = async () => {
+    if (!String(account.ownerName || "").trim()) {
+      toast.error("Owner name is required");
+      return;
+    }
+    if (!String(account.email || "").trim()) {
+      toast.error("Email is required");
+      return;
+    }
+    if (!String(account.phone || "").trim()) {
+      toast.error("Phone is required");
+      return;
+    }
 
-    setIsLoading(true);
+    setIsSaving(true);
     try {
-      // Simulate upload
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Create object URL for preview
-      const objectUrl = URL.createObjectURL(file);
-
-      const updatedUser = {
-        ...user,
-        avatar: objectUrl,
-      };
-
-      setUser(updatedUser);
-      setFormData(updatedUser);
-      localStorage.setItem("foodSaaSUser", JSON.stringify(updatedUser));
-
-      setMessage({ type: "success", text: "Avatar updated!" });
-    } catch (error) {
-      setMessage({ type: "error", text: "Failed to upload avatar" });
+      localStorage.setItem(ACCOUNT_STORAGE_KEY, JSON.stringify(account));
+      await new Promise((resolve) => setTimeout(resolve, 350));
+      toast.success("My Account updated");
+    } catch {
+      toast.error("Could not save account details");
     } finally {
-      setIsLoading(false);
+      setIsSaving(false);
     }
   };
-
-  // Food-related stats
-  const stats = [
-    {
-      label: "Recipes Created",
-      value: "247",
-      icon: "🍳",
-      color: "bg-indigo-50 text-indigo-700",
-    },
-    {
-      label: "Menu Items",
-      value: "89",
-      icon: "📋",
-      color: "bg-emerald-50 text-emerald-700",
-    },
-    {
-      label: "Orders Processed",
-      value: "1.4k",
-      icon: "📦",
-      color: "bg-blue-50 text-blue-700",
-    },
-    {
-      label: "Customer Reviews",
-      value: "4.8⭐",
-      icon: "⭐",
-      color: "bg-yellow-50 text-yellow-700",
-    },
-  ];
-
-  // Kitchen activity data
-  const activities = [
-    {
-      id: 1,
-      action: 'Added new "Truffle Pasta" recipe',
-      time: "2 hours ago",
-      icon: "🍝",
-    },
-    { id: 2, action: "Updated seasonal menu", time: "1 day ago", icon: "📝" },
-    { id: 3, action: "Processed 42 orders", time: "2 days ago", icon: "📊" },
-    {
-      id: 4,
-      action: "Received supplier delivery",
-      time: "3 days ago",
-      icon: "🚚",
-    },
-  ];
-
-  // Certifications
-  const certifications = [
-    { name: "Food Safety Level 3", date: "2023", badge: "🛡️" },
-    { name: "Certified Chef de Cuisine", date: "2022", badge: "👨‍🍳" },
-    { name: "HACCP Certified", date: "2023", badge: "✅" },
-    { name: "Nutrition Specialist", date: "2022", badge: "🥗" },
-  ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-sky-50 to-indigo-50 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-6xl mx-auto">
-        {/* Header with food theme */}
-        <div className="mb-8">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="p-3 bg-gradient-to-r from-sky-500 to-indigo-500 rounded-xl">
-              <span className="text-2xl">👨‍🍳</span>
-            </div>
+    <div className="min-h-screen bg-slate-50 p-4 sm:p-6">
+      <Toaster position="top-right" />
+
+      <div className="mx-auto max-w-7xl space-y-6">
+        <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900">
-                Chef Dashboard
+              <h1 className="flex items-center gap-2 text-2xl font-bold text-slate-900">
+                <UserCircle2 size={24} className="text-blue-600" />
+                My Account
               </h1>
-              <p className="text-gray-600 mt-2">
-                Manage your culinary profile and kitchen operations
+              <p className="mt-1 text-sm text-slate-600">
+                Manage owner profile, business identity, and security controls for
+                your SwadPoint dashboard.
               </p>
             </div>
+            <button
+              type="button"
+              onClick={syncFromSettings}
+              className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100"
+            >
+              Sync from Settings
+            </button>
           </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            <StatCard
+              label="Pending Orders"
+              value={String(metrics.pendingOrders)}
+              tone="blue"
+            />
+            <StatCard
+              label="Tables Configured"
+              value={String(metrics.tablesConfigured)}
+              tone="indigo"
+            />
+            <StatCard
+              label="Today Revenue"
+              value={`Rs. ${metrics.todayRevenue.toFixed(2)}`}
+              tone="emerald"
+            />
+            <StatCard
+              label="Profile Completion"
+              value={`${metrics.profileCompletion}%`}
+              tone="amber"
+            />
+          </div>
+        </section>
+
+        <div className="grid grid-cols-1 gap-6 xl:grid-cols-2">
+          <SectionCard
+            title="Owner Details"
+            description="Primary person responsible for operations, order issues, and billing communication."
+            icon={UserCircle2}
+          >
+            <Input
+              label="Owner Name"
+              value={account.ownerName}
+              onChange={(value) => updateField("ownerName", value)}
+            />
+            <Input
+              label="Role"
+              value={account.role}
+              onChange={(value) => updateField("role", value)}
+            />
+            <Input
+              label="Email"
+              type="email"
+              value={account.email}
+              onChange={(value) => updateField("email", value)}
+              icon={Mail}
+            />
+            <Input
+              label="Phone"
+              value={account.phone}
+              onChange={(value) => updateField("phone", value)}
+              icon={Phone}
+            />
+            <Input
+              label="Alternate Phone"
+              value={account.alternatePhone}
+              onChange={(value) => updateField("alternatePhone", value)}
+            />
+          </SectionCard>
+
+          <SectionCard
+            title="Business Profile"
+            description="Identity details used in QR ordering, invoice headers, and customer support."
+            icon={Building2}
+          >
+            <Input
+              label="Brand Name"
+              value={account.brandName}
+              onChange={(value) => updateField("brandName", value)}
+              icon={Store}
+            />
+            <Input
+              label="Branch Name"
+              value={account.branchName}
+              onChange={(value) => updateField("branchName", value)}
+            />
+            <Input
+              label="City"
+              value={account.city}
+              onChange={(value) => updateField("city", value)}
+              icon={MapPin}
+            />
+            <Input
+              label="Address"
+              value={account.address}
+              onChange={(value) => updateField("address", value)}
+            />
+            <Input
+              label="Website"
+              value={account.website}
+              onChange={(value) => updateField("website", value)}
+              placeholder="https://yourdomain.com"
+              icon={Globe}
+            />
+            <Input
+              label="GST Number"
+              value={account.gstNumber}
+              onChange={(value) => updateField("gstNumber", value)}
+            />
+          </SectionCard>
+
+          <SectionCard
+            title="Communication Preferences"
+            description="Choose what notifications you receive from order, payment, and system activities."
+            icon={Bell}
+          >
+            <Input
+              label="Timezone"
+              value={account.timezone}
+              onChange={(value) => updateField("timezone", value)}
+            />
+            <Input
+              label="Language"
+              value={account.language}
+              onChange={(value) => updateField("language", value)}
+            />
+            <Toggle
+              label="Receive daily operations alerts"
+              checked={account.receiveOpsAlerts}
+              onChange={(value) => updateField("receiveOpsAlerts", value)}
+            />
+            <Toggle
+              label="Receive product tips and release updates"
+              checked={account.receiveProductTips}
+              onChange={(value) => updateField("receiveProductTips", value)}
+            />
+            <Toggle
+              label="Send login activity alerts on email"
+              checked={account.loginEmailAlerts}
+              onChange={(value) => updateField("loginEmailAlerts", value)}
+            />
+          </SectionCard>
+
+          <SectionCard
+            title="Security Controls"
+            description="Protect dashboard access and sensitive actions like refund, discount override, and order closure."
+            icon={Lock}
+          >
+            <Toggle
+              label="Enable two-factor authentication"
+              checked={account.twoFactorEnabled}
+              onChange={(value) => updateField("twoFactorEnabled", value)}
+            />
+            <Toggle
+              label="Require PIN for critical actions"
+              checked={account.requirePinForActions}
+              onChange={(value) => updateField("requirePinForActions", value)}
+            />
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-700">
+              <p className="flex items-center gap-2 font-medium">
+                <ShieldCheck size={16} />
+                Account security status
+              </p>
+              <p className="mt-1">
+                {account.twoFactorEnabled
+                  ? "Two-factor is active. Security level is strong."
+                  : "Two-factor is off. Enable it for stronger admin protection."}
+              </p>
+            </div>
+          </SectionCard>
         </div>
 
-        {/* Message Alert */}
-        {message.text && (
-          <div
-            className={`mb-6 p-4 rounded-xl ${
-              message.type === "success"
-                ? "bg-emerald-50 text-emerald-800 border border-emerald-200"
-                : "bg-red-50 text-red-800 border border-red-200"
-            }`}
-          >
-            <div className="flex items-center gap-2">
-              {message.type === "success" ? "🎉" : "⚠️"}
-              {message.text}
-            </div>
-          </div>
-        )}
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Left Column - Profile Overview */}
-          <div className="lg:col-span-2 space-y-8">
-            {/* Profile Card with Food Theme */}
-            <div className="bg-white rounded-2xl shadow-lg border border-sky-100 p-6">
-              <div className="flex justify-between items-start mb-6">
-                <div className="flex items-center space-x-4">
-                  <div className="relative">
-                    <div className="w-24 h-24 rounded-2xl overflow-hidden bg-gradient-to-br from-sky-200 to-indigo-200 border-4 border-white shadow-lg">
-                      <img
-                        src={user.avatar}
-                        alt="Chef Profile"
-                        className="w-full h-full object-cover"
-                      />
-                    </div>
-                    <label className="absolute -bottom-2 -right-2 bg-gradient-to-r from-sky-500 to-indigo-500 text-white p-2 rounded-full cursor-pointer hover:from-sky-600 hover:to-indigo-600 shadow-lg transition-all hover:scale-105">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        onChange={handleAvatarUpload}
-                        className="hidden"
-                        disabled={isLoading}
-                      />
-                      <svg
-                        className="w-4 h-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"
-                        />
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          strokeWidth={2}
-                          d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"
-                        />
-                      </svg>
-                    </label>
-                  </div>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <h2 className="text-2xl font-bold text-gray-900">
-                        {user.name}
-                      </h2>
-                      <span className="px-2 py-1 bg-gradient-to-r from-sky-500 to-indigo-500 text-white text-xs font-semibold rounded-full">
-                        {user.subscription}
-                      </span>
-                    </div>
-                    <p className="text-gray-600">{user.email}</p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-sm text-sky-600">
-                        🍽️ {user.restaurant}
-                      </span>
-                      <span className="text-sm text-gray-500">
-                        • Member since {user.joinedDate}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setEditMode(!editMode)}
-                  className="px-4 py-2 bg-gradient-to-r from-sky-500 to-indigo-500 text-white rounded-xl hover:from-sky-600 hover:to-indigo-600 transition-all shadow-md hover:shadow-lg"
-                  disabled={isLoading}
-                >
-                  {editMode ? "Cancel" : "Edit Profile"}
-                </button>
-              </div>
-
-              {/* Food Stats */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-                {stats.map((stat, index) => (
-                  <div
-                    key={index}
-                    className={`${stat.color} rounded-xl p-4 text-center border border-transparent hover:border-sky-200 transition-all`}
-                  >
-                    <div className="text-3xl mb-1">{stat.icon}</div>
-                    <div className="text-2xl font-bold">{stat.value}</div>
-                    <div className="text-sm font-medium opacity-90">
-                      {stat.label}
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              {/* Bio & Specialties */}
-              <div className="mb-6">
-                <h3 className="text-lg font-semibold text-gray-900 mb-2 flex items-center gap-2">
-                  <span>👨‍🍳</span> Culinary Profile
-                </h3>
-                <p className="text-gray-700 mb-4">{user.bio}</p>
-                <div className="flex flex-wrap gap-2">
-                  <span className="px-3 py-1 bg-sky-100 text-sky-800 rounded-full text-sm font-medium">
-                    {user.specialty}
-                  </span>
-                  {certifications.slice(0, 2).map((cert, idx) => (
-                    <span
-                      key={idx}
-                      className="px-3 py-1 bg-emerald-100 text-emerald-800 rounded-full text-sm font-medium"
-                    >
-                      {cert.badge} {cert.name}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              {/* Contact Info */}
-              <div className="space-y-3">
-                <div className="flex items-center text-gray-700 p-3 bg-sky-50 rounded-lg">
-                  <div className="p-2 bg-white rounded-lg mr-3 shadow-sm">
-                    <span>📞</span>
-                  </div>
-                  <div>
-                    <div className="text-sm text-gray-500">Kitchen Phone</div>
-                    <div className="font-medium">{user.phone}</div>
-                  </div>
-                </div>
-                <div className="flex items-center text-gray-700 p-3 bg-emerald-50 rounded-lg">
-                  <div className="p-2 bg-white rounded-lg mr-3 shadow-sm">
-                    <span>📍</span>
-                  </div>
-                  <div>
-                    <div className="text-sm text-gray-500">
-                      Restaurant Location
-                    </div>
-                    <div className="font-medium">{user.location}</div>
-                  </div>
-                </div>
-                <div className="flex items-center text-gray-700 p-3 bg-blue-50 rounded-lg">
-                  <div className="p-2 bg-white rounded-lg mr-3 shadow-sm">
-                    <span>🌐</span>
-                  </div>
-                  <div>
-                    <div className="text-sm text-gray-500">Website</div>
-                    <a
-                      href={user.website}
-                      className="font-medium text-blue-600 hover:underline"
-                    >
-                      {user.website}
-                    </a>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Edit Form */}
-            {editMode && (
-              <div className="bg-white rounded-2xl shadow-lg border border-sky-100 p-6">
-                <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 bg-gradient-to-r from-sky-500 to-indigo-500 rounded-lg">
-                    <span className="text-xl">✏️</span>
-                  </div>
-                  <h3 className="text-xl font-bold text-gray-900">
-                    Edit Culinary Profile
-                  </h3>
-                </div>
-                <form onSubmit={handleSubmit}>
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                        <span>👨‍🍳</span> Chef Name
-                      </label>
-                      <input
-                        type="text"
-                        name="name"
-                        value={formData.name}
-                        onChange={handleChange}
-                        className="w-full px-4 py-3 border border-sky-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-sky-50/50"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                        <span>📧</span> Email
-                      </label>
-                      <input
-                        type="email"
-                        name="email"
-                        value={formData.email}
-                        onChange={handleChange}
-                        className="w-full px-4 py-3 border border-sky-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-sky-50/50"
-                        required
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                        <span>🍽️</span> Restaurant Name
-                      </label>
-                      <input
-                        type="text"
-                        name="restaurant"
-                        value={formData.restaurant}
-                        onChange={handleChange}
-                        className="w-full px-4 py-3 border border-sky-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-sky-50/50"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                        <span>📍</span> Location
-                      </label>
-                      <input
-                        type="text"
-                        name="location"
-                        value={formData.location}
-                        onChange={handleChange}
-                        className="w-full px-4 py-3 border border-sky-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-sky-50/50"
-                      />
-                    </div>
-
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                        <span>📝</span> Culinary Bio
-                      </label>
-                      <textarea
-                        name="bio"
-                        value={formData.bio}
-                        onChange={handleChange}
-                        rows="4"
-                        className="w-full px-4 py-3 border border-sky-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-sky-50/50"
-                        placeholder="Share your culinary journey, specialties, and passion..."
-                      />
-                    </div>
-
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                        <span>🌐</span> Website
-                      </label>
-                      <input
-                        type="url"
-                        name="website"
-                        value={formData.website}
-                        onChange={handleChange}
-                        className="w-full px-4 py-3 border border-sky-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-sky-50/50"
-                        placeholder="https://your-restaurant.com"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                        <span>📞</span> Phone Number
-                      </label>
-                      <input
-                        type="tel"
-                        name="phone"
-                        value={formData.phone}
-                        onChange={handleChange}
-                        className="w-full px-4 py-3 border border-sky-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-sky-50/50"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="block text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-                        <span>⭐</span> Cuisine Specialty
-                      </label>
-                      <select
-                        name="specialty"
-                        value={formData.specialty}
-                        onChange={handleChange}
-                        className="w-full px-4 py-3 border border-sky-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-sky-50/50"
-                      >
-                        <option value="Italian Cuisine">Italian</option>
-                        <option value="French Cuisine">French</option>
-                        <option value="Asian Fusion">Asian Fusion</option>
-                        <option value="Vegetarian">Vegetarian</option>
-                        <option value="Seafood">Seafood</option>
-                        <option value="Pastry">Pastry</option>
-                      </select>
-                    </div>
-                  </div>
-
-                  <div className="flex justify-end space-x-4 mt-8">
-                    <button
-                      type="button"
-                      onClick={() => setEditMode(false)}
-                      className="px-6 py-3 border border-sky-300 rounded-xl text-gray-700 hover:bg-sky-50 transition-all font-medium"
-                      disabled={isLoading}
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="submit"
-                      disabled={isLoading}
-                      className="px-6 py-3 bg-gradient-to-r from-sky-500 to-indigo-500 text-white rounded-xl hover:from-sky-600 hover:to-indigo-600 transition-all shadow-md hover:shadow-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                      {isLoading ? (
-                        <span className="flex items-center gap-2">
-                          <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
-                          Saving...
-                        </span>
-                      ) : (
-                        "Save Changes"
-                      )}
-                    </button>
-                  </div>
-                </form>
-              </div>
-            )}
-          </div>
-
-          {/* Right Column - Sidebar */}
-          <div className="space-y-8">
-            {/* Kitchen Operations */}
-            <div className="bg-white rounded-2xl shadow-lg border border-emerald-100 p-6">
-              <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <span>⚙️</span> Kitchen Operations
-              </h3>
-              <div className="space-y-3">
-                <button className="w-full text-left px-4 py-3 rounded-xl hover:bg-emerald-50 transition-all flex items-center justify-between group border border-transparent hover:border-emerald-200">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-emerald-100 rounded-lg group-hover:bg-emerald-200">
-                      <span>📊</span>
-                    </div>
-                    <div>
-                      <div className="font-medium text-gray-900">
-                        Inventory Management
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        Track ingredients & supplies
-                      </div>
-                    </div>
-                  </div>
-                  <svg
-                    className="w-5 h-5 text-emerald-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 5l7 7-7 7"
-                    />
-                  </svg>
-                </button>
-                <button className="w-full text-left px-4 py-3 rounded-xl hover:bg-blue-50 transition-all flex items-center justify-between group border border-transparent hover:border-blue-200">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-blue-100 rounded-lg group-hover:bg-blue-200">
-                      <span>📋</span>
-                    </div>
-                    <div>
-                      <div className="font-medium text-gray-900">
-                        Menu Planning
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        Create & update menus
-                      </div>
-                    </div>
-                  </div>
-                  <svg
-                    className="w-5 h-5 text-blue-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 5l7 7-7 7"
-                    />
-                  </svg>
-                </button>
-                <button className="w-full text-left px-4 py-3 rounded-xl hover:bg-purple-50 transition-all flex items-center justify-between group border border-transparent hover:border-purple-200">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-purple-100 rounded-lg group-hover:bg-purple-200">
-                      <span>📦</span>
-                    </div>
-                    <div>
-                      <div className="font-medium text-gray-900">
-                        Order Tracking
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        Monitor kitchen orders
-                      </div>
-                    </div>
-                  </div>
-                  <svg
-                    className="w-5 h-5 text-purple-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 5l7 7-7 7"
-                    />
-                  </svg>
-                </button>
-                <button className="w-full text-left px-4 py-3 rounded-xl hover:bg-indigo-50 transition-all flex items-center justify-between group border border-transparent hover:border-indigo-200">
-                  <div className="flex items-center gap-3">
-                    <div className="p-2 bg-indigo-100 rounded-lg group-hover:bg-indigo-200">
-                      <span>🍳</span>
-                    </div>
-                    <div>
-                      <div className="font-medium text-gray-900">
-                        Recipe Database
-                      </div>
-                      <div className="text-sm text-gray-500">
-                        Manage recipes
-                      </div>
-                    </div>
-                  </div>
-                  <svg
-                    className="w-5 h-5 text-indigo-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 5l7 7-7 7"
-                    />
-                  </svg>
-                </button>
-              </div>
-            </div>
-
-            {/* Kitchen Activity */}
-            <div className="bg-white rounded-2xl shadow-lg border border-sky-100 p-6">
-              <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <span>🔥</span> Today&apos;s Kitchen Activity
-              </h3>
-              <div className="space-y-4">
-                {activities.map((activity) => (
-                  <div
-                    key={activity.id}
-                    className="border-l-4 border-sky-500 pl-4 py-3 hover:bg-sky-50/50 rounded-r-lg transition-all"
-                  >
-                    <div className="flex items-start gap-3">
-                      <div className="p-2 bg-white rounded-lg shadow-sm">
-                        <span className="text-lg">{activity.icon}</span>
-                      </div>
-                      <div>
-                        <p className="text-gray-800 font-medium">
-                          {activity.action}
-                        </p>
-                        <p className="text-gray-500 text-sm mt-1">
-                          {activity.time}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Certifications */}
-            <div className="bg-white rounded-2xl shadow-lg border border-emerald-100 p-6">
-              <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <span>🏆</span> Certifications
-              </h3>
-              <div className="space-y-3">
-                {certifications.map((cert, index) => (
-                  <div
-                    key={index}
-                    className="flex items-center justify-between p-3 bg-emerald-50/50 rounded-xl hover:bg-emerald-50 transition-all"
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="text-2xl">{cert.badge}</div>
-                      <div>
-                        <div className="font-medium text-gray-900">
-                          {cert.name}
-                        </div>
-                        <div className="text-sm text-gray-500">
-                          Issued {cert.date}
-                        </div>
-                      </div>
-                    </div>
-                    <button className="text-emerald-600 hover:text-emerald-700 text-sm font-medium">
-                      View
-                    </button>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Subscription & Billing */}
-            <div className="bg-gradient-to-r from-sky-500 to-indigo-500 rounded-2xl shadow-lg p-6 text-white">
-              <h3 className="text-lg font-bold mb-4">Subscription Plan</h3>
-              <div className="mb-4">
-                <div className="text-3xl font-bold mb-1">
-                  {user.subscription}
-                </div>
-                <div className="opacity-90">$49/month • Auto-renewal</div>
-              </div>
-              <div className="space-y-3">
-                <button className="w-full text-center px-4 py-3 bg-white text-sky-700 rounded-xl hover:bg-sky-50 transition-all font-semibold">
-                  Upgrade Plan
-                </button>
-                <button className="w-full text-center px-4 py-3 bg-transparent border-2 border-white text-white rounded-xl hover:bg-white/10 transition-all">
-                  View Invoices
-                </button>
-              </div>
-            </div>
-
-            {/* Kitchen Settings */}
-            <div className="bg-white rounded-2xl shadow-lg border border-red-100 p-6">
-              <h3 className="text-lg font-bold text-red-700 mb-4 flex items-center gap-2">
-                <span>⚠️</span> Kitchen Settings
-              </h3>
-              <div className="space-y-3">
-                <button className="w-full text-left px-4 py-3 rounded-xl bg-red-50 text-red-700 hover:bg-red-100 transition-all font-medium">
-                  🔒 Kitchen Access Control
-                </button>
-                <button className="w-full text-left px-4 py-3 rounded-xl bg-red-50 text-red-700 hover:bg-red-100 transition-all font-medium">
-                  🚫 Deactivate Kitchen
-                </button>
-                <button className="w-full text-left px-4 py-3 rounded-xl bg-red-50 text-red-700 hover:bg-red-100 transition-all font-medium">
-                  🗑️ Delete All Data
-                </button>
-              </div>
-            </div>
+        <div className="sticky bottom-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-lg">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-slate-600">
+              Profile and business changes update immediately in this admin
+              dashboard.
+            </p>
+            <button
+              type="button"
+              onClick={saveAccount}
+              disabled={isSaving}
+              className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+            >
+              <Save size={16} />
+              {isSaving ? "Saving..." : "Save My Account"}
+            </button>
           </div>
         </div>
       </div>
@@ -729,3 +384,84 @@ export default function ProfilePage() {
   );
 }
 
+const SectionCard = ({ title, description, icon: Icon, children }) => (
+  <section className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
+    <div className="mb-5 flex items-start gap-3">
+      <div className="rounded-lg bg-slate-100 p-2">
+        <Icon size={18} className="text-slate-700" />
+      </div>
+      <div>
+        <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
+        <p className="text-sm text-slate-600">{description}</p>
+      </div>
+    </div>
+    <div className="space-y-4">{children}</div>
+  </section>
+);
+
+const Input = ({
+  label,
+  value,
+  onChange,
+  type = "text",
+  placeholder,
+  icon: Icon,
+}) => (
+  <label className="block">
+    <span className="mb-1 block text-sm font-medium text-slate-700">{label}</span>
+    <div className="relative">
+      {Icon ? (
+        <span className="pointer-events-none absolute left-3 top-2.5 text-slate-400">
+          <Icon size={16} />
+        </span>
+      ) : null}
+      <input
+        type={type}
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        className={`w-full rounded-lg border border-slate-300 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100 ${
+          Icon ? "pl-9 pr-3" : "px-3"
+        }`}
+      />
+    </div>
+  </label>
+);
+
+const Toggle = ({ label, checked, onChange }) => (
+  <label className="flex items-center justify-between rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+    <span className="pr-3 text-sm text-slate-700">{label}</span>
+    <button
+      type="button"
+      onClick={() => onChange(!checked)}
+      className={`relative h-6 w-11 rounded-full transition ${
+        checked ? "bg-blue-600" : "bg-slate-300"
+      }`}
+      aria-label={label}
+    >
+      <span
+        className={`absolute top-0.5 h-5 w-5 rounded-full bg-white transition ${
+          checked ? "left-5" : "left-0.5"
+        }`}
+      />
+    </button>
+  </label>
+);
+
+const StatCard = ({ label, value, tone }) => {
+  const toneClass =
+    tone === "blue"
+      ? "bg-blue-50 text-blue-700"
+      : tone === "indigo"
+      ? "bg-indigo-50 text-indigo-700"
+      : tone === "emerald"
+      ? "bg-emerald-50 text-emerald-700"
+      : "bg-amber-50 text-amber-700";
+
+  return (
+    <div className={`rounded-lg px-3 py-2 ${toneClass}`}>
+      <p className="text-xs">{label}</p>
+      <p className="font-semibold">{value}</p>
+    </div>
+  );
+};

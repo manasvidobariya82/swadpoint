@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { downloadInvoice, printInvoice } from "@/helper/invoice";
 
 const fetchOrdersFromApi = async () => {
   const response = await fetch("/api/orders", { cache: "no-store" });
@@ -16,6 +17,46 @@ const updateOrderStatus = async (id, status) => {
   });
   if (!response.ok) throw new Error("Failed to update order");
   return response.json();
+};
+
+const toNumber = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const buildInvoiceFromOrder = (order) => {
+  const items = Array.isArray(order?.items) ? order.items : [];
+  const totalFromItems = items.reduce(
+    (sum, item) => sum + toNumber(item?.lineTotal || toNumber(item?.price) * toNumber(item?.qty || 1)),
+    0
+  );
+  const totalAmount = toNumber(order?.total || totalFromItems);
+  const invoiceId = `INV-${String(order?.id || Date.now()).replace(/[^\w-]/g, "")}`;
+
+  return {
+    invoiceId,
+    orderId: order?.id || "-",
+    paymentId: order?.paymentId || "-",
+    issuedAt: order?.time || new Date().toISOString(),
+    tableNo: order?.tableNo || "NA",
+    customerName: order?.customerName || "Walk-in",
+    customerMobile: order?.customerMobile || "-",
+    paymentMethod: order?.paymentMethod || "-",
+    paymentStatus: order?.paymentStatus || "-",
+    orderStatus: order?.status || "-",
+    totalAmount,
+    items: items.map((item) => {
+      const qty = Math.max(1, toNumber(item?.qty || 1));
+      const lineTotal = toNumber(item?.lineTotal || 0);
+      const unitPrice = lineTotal > 0 ? lineTotal / qty : toNumber(item?.price || 0);
+      return {
+        name: item?.name || "Item",
+        qty,
+        unitPrice,
+        lineTotal: lineTotal > 0 ? lineTotal : unitPrice * qty,
+      };
+    }),
+  };
 };
 
 export default function OrdersPage() {
@@ -135,17 +176,39 @@ export default function OrdersPage() {
                   </div>
                 </div>
 
-                {order.status !== "Completed" && (
+                <div className="mt-4 flex flex-wrap gap-2">
                   <button
-                    onClick={() => markCompleted(order.id)}
-                    disabled={actionLoadingId === order.id}
-                    className="mt-4 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                    type="button"
+                    onClick={() => {
+                      const success = printInvoice(buildInvoiceFromOrder(order));
+                      if (!success) {
+                        alert("Please allow popups to print invoice.");
+                      }
+                    }}
+                    className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
                   >
-                    {actionLoadingId === order.id
-                      ? "Updating..."
-                      : "Mark Completed"}
+                    Print Invoice
                   </button>
-                )}
+                  <button
+                    type="button"
+                    onClick={() => downloadInvoice(buildInvoiceFromOrder(order))}
+                    className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                  >
+                    Download Invoice
+                  </button>
+
+                  {order.status !== "Completed" && (
+                    <button
+                      onClick={() => markCompleted(order.id)}
+                      disabled={actionLoadingId === order.id}
+                      className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+                    >
+                      {actionLoadingId === order.id
+                        ? "Updating..."
+                        : "Mark Completed"}
+                    </button>
+                  )}
+                </div>
               </div>
             ))}
           </div>

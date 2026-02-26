@@ -8,6 +8,9 @@ import {
 } from "@/helper/storage";
 import { downloadInvoice, printInvoice } from "@/helper/invoice";
 
+const PAYMENTS_CACHE_KEY = "swadpointBillingPaymentsCache";
+const ORDERS_CACHE_KEY = "swadpointBillingOrdersCache";
+
 const createUpiUrl = (upiId, payeeName, amount = 1) =>
   `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(
     payeeName
@@ -28,6 +31,77 @@ const fetchOrdersFromApi = async () => {
 const toNumber = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const toTimestamp = (value) => {
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const normalizeId = (value) => String(value || "").trim();
+
+const readCachedArray = (key) => {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const readCachedObject = (key) => {
+  if (typeof window === "undefined") return {};
+
+  try {
+    const raw = localStorage.getItem(key);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const mergePayments = (current, incoming) => {
+  const mergedById = new Map();
+
+  (Array.isArray(current) ? current : []).forEach((payment) => {
+    const id = normalizeId(payment?.id);
+    if (!id) return;
+    mergedById.set(id, payment);
+  });
+
+  (Array.isArray(incoming) ? incoming : []).forEach((payment) => {
+    const id = normalizeId(payment?.id);
+    if (!id) return;
+    mergedById.set(id, {
+      ...(mergedById.get(id) || {}),
+      ...payment,
+    });
+  });
+
+  return Array.from(mergedById.values()).sort(
+    (a, b) => toTimestamp(b?.timestamp) - toTimestamp(a?.timestamp)
+  );
+};
+
+const mergeOrdersLookup = (currentLookup, incomingOrders) => {
+  const nextLookup = { ...(currentLookup || {}) };
+
+  (Array.isArray(incomingOrders) ? incomingOrders : []).forEach((order) => {
+    const id = normalizeId(order?.id);
+    if (!id) return;
+    nextLookup[id] = {
+      ...(nextLookup[id] || {}),
+      ...order,
+    };
+  });
+
+  return nextLookup;
 };
 
 const buildInvoiceFromPayment = (payment, order) => {
@@ -73,14 +147,19 @@ const buildInvoiceFromPayment = (payment, order) => {
 };
 
 export default function BillingPage() {
-  const [payments, setPayments] = useState([]);
-  const [ordersById, setOrdersById] = useState({});
+  const [payments, setPayments] = useState(() =>
+    readCachedArray(PAYMENTS_CACHE_KEY)
+  );
+  const [ordersById, setOrdersById] = useState(() =>
+    readCachedObject(ORDERS_CACHE_KEY)
+  );
   const [paymentConfig, setPaymentConfig] = useState({
     upiId: "swadpoint@upi",
     payeeName: "SwadPoint Restaurant",
   });
   const [statusFilter, setStatusFilter] = useState("All");
   const [isLoading, setIsLoading] = useState(true);
+  const [lastSyncedAt, setLastSyncedAt] = useState("");
 
   const loadData = async () => {
     const [paymentsResult, ordersResult] = await Promise.allSettled([
@@ -89,22 +168,18 @@ export default function BillingPage() {
     ]);
 
     if (paymentsResult.status === "fulfilled") {
-      const list = paymentsResult.value;
-      setPayments(Array.isArray(list) ? list : []);
-    } else {
-      setPayments([]);
+      setPayments((prev) => mergePayments(prev, paymentsResult.value));
     }
 
     if (ordersResult.status === "fulfilled") {
-      const orderList = Array.isArray(ordersResult.value) ? ordersResult.value : [];
-      const nextLookup = orderList.reduce((acc, order) => {
-        const id = String(order?.id || "").trim();
-        if (id) acc[id] = order;
-        return acc;
-      }, {});
-      setOrdersById(nextLookup);
-    } else {
-      setOrdersById({});
+      setOrdersById((prev) => mergeOrdersLookup(prev, ordersResult.value));
+    }
+
+    if (
+      paymentsResult.status === "fulfilled" ||
+      ordersResult.status === "fulfilled"
+    ) {
+      setLastSyncedAt(new Date().toLocaleTimeString());
     }
 
     setIsLoading(false);
@@ -115,13 +190,21 @@ export default function BillingPage() {
     const timeoutId = window.setTimeout(() => {
       loadData();
     }, 0);
-    const intervalId = window.setInterval(loadData, 3000);
+    const intervalId = window.setInterval(loadData, 10000);
 
     return () => {
       window.clearTimeout(timeoutId);
       window.clearInterval(intervalId);
     };
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem(PAYMENTS_CACHE_KEY, JSON.stringify(payments));
+  }, [payments]);
+
+  useEffect(() => {
+    localStorage.setItem(ORDERS_CACHE_KEY, JSON.stringify(ordersById));
+  }, [ordersById]);
 
   const filteredPayments = useMemo(() => {
     if (statusFilter === "All") return payments;
@@ -255,16 +338,30 @@ export default function BillingPage() {
             <h2 className="text-lg font-semibold text-gray-900">
               Payment Transactions
             </h2>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="rounded-lg border px-3 py-2 text-sm"
-            >
-              <option value="All">All</option>
-              <option value="success">Success</option>
-              <option value="pending">Pending</option>
-              <option value="failed">Failed</option>
-            </select>
+            <div className="flex flex-wrap items-center gap-2">
+              {lastSyncedAt ? (
+                <span className="text-xs text-gray-500">
+                  Last synced: {lastSyncedAt}
+                </span>
+              ) : null}
+              <button
+                type="button"
+                onClick={loadData}
+                className="rounded-lg border px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-100"
+              >
+                Refresh
+              </button>
+              <select
+                value={statusFilter}
+                onChange={(e) => setStatusFilter(e.target.value)}
+                className="rounded-lg border px-3 py-2 text-sm"
+              >
+                <option value="All">All</option>
+                <option value="success">Success</option>
+                <option value="pending">Pending</option>
+                <option value="failed">Failed</option>
+              </select>
+            </div>
           </div>
 
           {!isLoading && filteredPayments.length === 0 ? (

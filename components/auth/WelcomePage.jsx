@@ -180,12 +180,12 @@ export default function LandingPage() {
             >
               🚀 Get Started Free
             </button>
-            <button
+            {/* <button
               onClick={() => router.push("/demo")}
               className="px-12 py-4 bg-white/10 backdrop-blur-sm border-2 border-white/30 hover:bg-white/20 text-white rounded-full font-semibold text-lg transition-all duration-300 hover:shadow-lg"
             >
               📅 Request a Demo
-            </button>
+            </button> */}
           </div>
 
           {/* Trust badge */}

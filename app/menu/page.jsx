@@ -86,6 +86,13 @@ const sanitizeMenuItems = (value) => {
     .filter((item) => item.name);
 };
 
+const fetchMenuFromServer = async () => {
+  const response = await fetch("/api/menu", { cache: "no-store" });
+  if (!response.ok) throw new Error("Failed to fetch menu");
+  const data = await response.json();
+  return sanitizeMenuItems(data);
+};
+
 const postJson = async (url, payload) => {
   const response = await fetch(url, {
     method: "POST",
@@ -119,15 +126,46 @@ function CustomerMenuContent() {
   const [confirmation, setConfirmation] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [recentlyAdded, setRecentlyAdded] = useState({});
+  const [serverMenuItems, setServerMenuItems] = useState([]);
   const addTimeoutRef = useRef({});
 
   const queryMenuItems = useMemo(() => parseItemsQuery(itemsParam), [itemsParam]);
+  const localMenuItems = useMemo(() => sanitizeMenuItems(getMenu()), []);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    if (queryMenuItems.length > 0) {
+      return () => {
+        isCancelled = true;
+      };
+    }
+
+    const loadServerMenu = async () => {
+      try {
+        const menuFromServer = await fetchMenuFromServer();
+        if (!isCancelled) {
+          setServerMenuItems(menuFromServer);
+        }
+      } catch {
+        if (!isCancelled) {
+          setServerMenuItems([]);
+        }
+      }
+    };
+
+    loadServerMenu();
+    return () => {
+      isCancelled = true;
+    };
+  }, [queryMenuItems.length]);
+
   const menuItems = useMemo(() => {
-    const sourceItems =
-      queryMenuItems.length > 0 ? queryMenuItems : getMenu();
-    return sanitizeMenuItems(sourceItems);
-  }, [queryMenuItems]);
-  const menuSource = queryMenuItems.length > 0 ? "query" : "local";
+    if (queryMenuItems.length > 0) return queryMenuItems;
+    if (serverMenuItems.length > 0) return serverMenuItems;
+    return localMenuItems;
+  }, [queryMenuItems, serverMenuItems, localMenuItems]);
+  const menuSource = queryMenuItems.length > 0 ? "query" : "server";
   const groupedMenuItems = useMemo(() => {
     const grouped = new Map();
 

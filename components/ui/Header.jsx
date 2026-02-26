@@ -42,8 +42,6 @@ export default function Header({ isAuthenticated = false, user }) {
 
   // Get user's first letter for avatar
   const getAvatarLetter = () => {
-    console.log("user?.name", user?.name); // Fixed: user?.name
-
     if (user?.name) {
       return user.name.charAt(0).toUpperCase();
     }

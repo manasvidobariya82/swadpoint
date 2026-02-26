@@ -40,30 +40,99 @@ const parseItemsQuery = (value) => {
   }
 };
 
+const sanitizeMenuItems = (value) => {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .filter((item) => item && typeof item === "object")
+    .map((item, index) => ({
+      id: item.id || `menu-item-${index}`,
+      name: String(item.name || "").trim(),
+      description: String(item.description || "").trim(),
+      category: normalizeCategory(item.category),
+      price: Number(item.price) || 0,
+      createdAt: item.createdAt || new Date().toISOString(),
+    }))
+    .filter((item) => item.name);
+};
+
+const fetchMenuFromServer = async () => {
+  const response = await fetch("/api/menu", { cache: "no-store" });
+  if (!response.ok) throw new Error("Failed to fetch menu");
+  const data = await response.json();
+  return sanitizeMenuItems(data);
+};
+
+const saveMenuToServer = async (menuItems) => {
+  await fetch("/api/menu", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(sanitizeMenuItems(menuItems)),
+  });
+};
+
 export default function AdminMenuPage() {
-  const [menuItems, setMenuItems] = useState([]);
+  const [menuItems, setMenuItems] = useState(() => {
+    if (typeof window === "undefined") return [];
+
+    const params = new URLSearchParams(window.location.search);
+    const queryItems = parseItemsQuery(params.get("items"));
+    if (queryItems.length > 0) return queryItems;
+
+    return sanitizeMenuItems(getMenu());
+  });
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
-  const [menuSource, setMenuSource] = useState("local");
+  const [menuSource, setMenuSource] = useState(() => {
+    if (typeof window === "undefined") return "local";
+    const params = new URLSearchParams(window.location.search);
+    const queryItems = parseItemsQuery(params.get("items"));
+    return queryItems.length > 0 ? "query" : "local";
+  });
   const [activeCategory, setActiveCategory] = useState("All");
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const queryItems = parseItemsQuery(params.get("items"));
-
-    if (queryItems.length > 0) {
-      setMenuItems(queryItems);
-      setMenuSource("query");
-      return;
+    let isCancelled = false;
+    if (menuSource === "query") {
+      return () => {
+        isCancelled = true;
+      };
     }
 
-    setMenuItems(getMenu());
-    setMenuSource("local");
-  }, []);
+    const localMenu = sanitizeMenuItems(getMenu());
+
+    const loadServerMenu = async () => {
+      try {
+        const serverMenu = await fetchMenuFromServer();
+        if (isCancelled) return;
+
+        if (serverMenu.length > 0 || localMenu.length === 0) {
+          setMenuItems(serverMenu);
+          saveMenu(serverMenu);
+        } else {
+          void saveMenuToServer(localMenu);
+        }
+        setMenuSource("server");
+      } catch {
+        // Keep local menu if server request fails.
+      }
+    };
+
+    loadServerMenu();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [menuSource]);
 
   const persistMenu = (nextMenu) => {
-    setMenuItems(nextMenu);
-    saveMenu(nextMenu);
+    const normalizedMenu = sanitizeMenuItems(nextMenu);
+    setMenuItems(normalizedMenu);
+    saveMenu(normalizedMenu);
+
+    if (menuSource !== "query") {
+      void saveMenuToServer(normalizedMenu);
+    }
   };
 
   const resetForm = () => {

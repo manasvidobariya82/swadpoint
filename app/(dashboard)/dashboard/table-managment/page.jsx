@@ -4,10 +4,9 @@ import { useEffect, useState } from "react";
 import QRCode from "react-qr-code";
 import { toast, Toaster } from "react-hot-toast";
 import { Copy, ExternalLink, Trash2 } from "lucide-react";
-import { getMenu, getPaymentConfig, getTables, saveTables } from "@/helper/storage";
+import { getPaymentConfig, getTables, saveTables } from "@/helper/storage";
 
 const MENU_BASE_URL_KEY = "restaurantMenuBaseUrl";
-const DEFAULT_MENU_CATEGORY = "Main Course";
 
 const normalizeBaseUrl = (value) => {
   const trimmed = String(value || "").trim();
@@ -43,29 +42,8 @@ const isLocalHostUrl = (value) => {
   }
 };
 
-const normalizeMenuCategory = (value) => {
-  const category = String(value || "").trim();
-  return category || DEFAULT_MENU_CATEGORY;
-};
-
-const sanitizeMenuItems = (value) => {
-  if (!Array.isArray(value)) return [];
-
-  return value
-    .filter((item) => item && typeof item === "object")
-    .map((item, index) => ({
-      id: item.id || `menu-item-${index}`,
-      name: String(item.name || "").trim(),
-      description: String(item.description || "").trim(),
-      category: normalizeMenuCategory(item.category),
-      price: Number(item.price) || 0,
-    }))
-    .filter((item) => item.name);
-};
-
 export default function TablesPage() {
   const [tables, setTables] = useState(() => getTables());
-  const [menuItems] = useState(() => getMenu());
   const [tableNo, setTableNo] = useState("");
   const [baseUrl, setBaseUrl] = useState(() => {
     if (typeof window === "undefined") return "";
@@ -103,11 +81,6 @@ export default function TablesPage() {
     const origin = getActiveBaseUrl();
     const params = new URLSearchParams();
     params.set("table", tableNumber);
-
-    const compactItems = sanitizeMenuItems(menuItems);
-    if (compactItems.length > 0) {
-      params.set("items", JSON.stringify(compactItems));
-    }
 
     const paymentConfig = getPaymentConfig();
     const upiId = String(paymentConfig?.upiId || "").trim();
@@ -234,7 +207,7 @@ export default function TablesPage() {
           </div>
 
           <p className="mt-3 text-sm text-gray-500">
-            QR contains table + menu data for direct customer ordering.
+            QR opens table link and loads live menu from server.
           </p>
         </div>
 

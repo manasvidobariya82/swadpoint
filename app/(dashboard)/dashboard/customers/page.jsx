@@ -1,94 +1,203 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { getOrders } from "@/helper/storage";
 
-/* ================== MAIN COMPONENT ================== */
+const ORDER_STORAGE_KEY = "restaurantOrders";
+
+const toNumber = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const normalizeText = (value) => String(value || "").trim();
+
+const parseTime = (value) => {
+  const parsed = new Date(value).getTime();
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const formatDateTime = (value) => {
+  const parsed = parseTime(value);
+  if (!parsed) return "-";
+  return new Date(parsed).toLocaleString();
+};
+
+const getFavoriteFood = (foodCounter) => {
+  const foods = Object.entries(foodCounter);
+  if (foods.length === 0) return "-";
+
+  foods.sort((a, b) => b[1] - a[1]);
+  return foods[0][0];
+};
+
+const deriveCustomersFromOrders = (orders) => {
+  const groupedCustomers = new Map();
+
+  (Array.isArray(orders) ? orders : []).forEach((order) => {
+    if (!order || typeof order !== "object") return;
+
+    const name = normalizeText(order.customerName) || "Walk-in";
+    const mobile =
+      normalizeText(order.customerMobile || order.mobile || order.phone) || "-";
+    const key = `${name.toLowerCase()}|${mobile}`;
+
+    if (!groupedCustomers.has(key)) {
+      groupedCustomers.set(key, {
+        name,
+        mobile,
+        visit: 0,
+        orders: 0,
+        loyalty: 0,
+        food: "-",
+        status: "Active",
+        totalSpent: 0,
+        pendingOrders: 0,
+        lastOrderAt: 0,
+        lastOrderLabel: "-",
+        foodCounter: {},
+        recentOrders: [],
+      });
+    }
+
+    const customer = groupedCustomers.get(key);
+    const orderTotal = toNumber(order.total);
+    const orderTime = parseTime(order.time);
+    const normalizedStatus = normalizeText(order.status) || "Pending";
+    const items = Array.isArray(order.items) ? order.items : [];
+
+    customer.visit += 1;
+    customer.orders += 1;
+    customer.totalSpent += orderTotal;
+
+    if (normalizedStatus.toLowerCase() === "pending") {
+      customer.pendingOrders += 1;
+    }
+
+    if (orderTime >= customer.lastOrderAt) {
+      customer.lastOrderAt = orderTime;
+      customer.lastOrderLabel = formatDateTime(order.time);
+    }
+
+    items.forEach((item) => {
+      const itemName = normalizeText(item?.name);
+      if (!itemName) return;
+
+      const qty = Math.max(1, toNumber(item?.qty || 1));
+      customer.foodCounter[itemName] =
+        (customer.foodCounter[itemName] || 0) + qty;
+    });
+
+    customer.recentOrders.push({
+      id: normalizeText(order.id) || "-",
+      tableNo: normalizeText(order.tableNo) || "-",
+      total: orderTotal,
+      status: normalizedStatus,
+      time: order.time,
+    });
+  });
+
+  const customers = Array.from(groupedCustomers.values())
+    .map((customer) => ({
+      ...customer,
+      loyalty: Math.round(customer.totalSpent / 100),
+      status: customer.pendingOrders > 0 ? "Pending" : "Active",
+      food: getFavoriteFood(customer.foodCounter),
+      recentOrders: customer.recentOrders
+        .sort((a, b) => parseTime(b.time) - parseTime(a.time))
+        .slice(0, 3),
+    }))
+    .sort((a, b) => b.lastOrderAt - a.lastOrderAt);
+
+  return customers.map((customer, index) => ({
+    id: index + 1,
+    ...customer,
+  }));
+};
+
 export default function Page() {
-  const [customers, setCustomers] = useState([]);
+  const [customers, setCustomers] = useState(() =>
+    deriveCustomersFromOrders(getOrders())
+  );
   const [search, setSearch] = useState("");
   const [entries, setEntries] = useState(10);
   const [page, setPage] = useState(1);
-
-  const [isAddOpen, setIsAddOpen] = useState(false);
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [selected, setSelected] = useState(null);
 
-  /* -------- Add Customer Form -------- */
-  const [form, setForm] = useState({
-    name: "",
-    mobile: "",
-    email: "",
-    loyalty: "",
-    food: "Veg",
-    rating: 0,
-    status: "Active",
-  });
-
-  /* -------- Add Customer -------- */
-  const handleAdd = () => {
-    if (!form.name || !form.mobile) return;
-
-    setCustomers((prev) => [
-      {
-        id: prev.length + 1,
-        visit: Math.floor(Math.random() * 10) + 1,
-        orders: Math.floor(Math.random() * 20),
-        createdAt: new Date().toISOString().split("T")[0],
-        ...form,
-      },
-      ...prev,
-    ]);
-
-    setForm({
-      name: "",
-      mobile: "",
-      email: "",
-      loyalty: "",
-      food: "Veg",
-      rating: 0,
-      status: "Active",
-    });
-
-    setIsAddOpen(false);
+  const loadCustomers = () => {
+    const orderList = getOrders();
+    setCustomers(deriveCustomersFromOrders(orderList));
   };
 
-  /* -------- Search Filter -------- */
+  useEffect(() => {
+    const syncOrders = (event) => {
+      if (!event?.key || event.key === ORDER_STORAGE_KEY) {
+        loadCustomers();
+      }
+    };
+
+    window.addEventListener("storage", syncOrders);
+    const intervalId = window.setInterval(loadCustomers, 3000);
+
+    return () => {
+      window.removeEventListener("storage", syncOrders);
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
   const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase();
+    if (!query) return customers;
+
     return customers.filter(
-      (c) =>
-        c.name.toLowerCase().includes(search.toLowerCase()) ||
-        c.mobile.includes(search) ||
-        c.email.toLowerCase().includes(search.toLowerCase())
+      (customer) =>
+        customer.name.toLowerCase().includes(query) ||
+        customer.mobile.includes(search.trim()) ||
+        customer.food.toLowerCase().includes(query) ||
+        customer.status.toLowerCase().includes(query)
     );
   }, [customers, search]);
 
-  /* -------- Pagination -------- */
   const totalPages = Math.max(1, Math.ceil(filtered.length / entries));
-  const paginated = filtered.slice((page - 1) * entries, page * entries);
+  const safePage = Math.min(page, totalPages);
+  const paginated = filtered.slice((safePage - 1) * entries, safePage * entries);
 
-  /* -------- Export CSV -------- */
   const exportCSV = () => {
+    const csvEscape = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
+
     const csv =
-      "ID,Name,Mobile,Email,Visits,Orders,Loyalty,Food,Rating,Status\n" +
+      "ID,Name,Mobile,Visits,Orders,Loyalty,Favorite Food,Status,Total Spent,Last Order\n" +
       customers
-        .map(
-          (c) =>
-            `${c.id},${c.name},${c.mobile},${c.email},${c.visit},${c.orders},${c.loyalty},${c.food},${c.rating},${c.status}`
+        .map((customer) =>
+          [
+            customer.id,
+            customer.name,
+            customer.mobile,
+            customer.visit,
+            customer.orders,
+            customer.loyalty,
+            customer.food,
+            customer.status,
+            customer.totalSpent.toFixed(2),
+            customer.lastOrderLabel,
+          ]
+            .map(csvEscape)
+            .join(",")
         )
         .join("\n");
 
     const blob = new Blob([csv], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "customers.csv";
-    a.click();
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "customers.csv";
+    anchor.click();
   };
 
   return (
-    <div className="rounded-xl bg-white p-6 shadow-sm space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center border-b pb-4">
+    <div className="space-y-6 rounded-xl bg-white p-6 shadow-sm">
+      <div className="flex items-center justify-between border-b pb-4">
         <h1 className="text-xl font-semibold">Customer Management</h1>
         <div className="flex gap-3">
           <button
@@ -98,25 +207,40 @@ export default function Page() {
             Export
           </button>
           <button
-            onClick={() => setIsAddOpen(true)}
+            onClick={loadCustomers}
             className="rounded-full bg-black px-5 py-2 text-sm text-white"
           >
-            + Add Customer
+            Sync Orders
           </button>
         </div>
       </div>
 
-      {/* Search */}
-      <input
-        value={search}
-        onChange={(e) => setSearch(e.target.value)}
-        placeholder="Search customer..."
-        className="h-11 w-72 rounded-lg border px-4 text-sm outline-none focus:ring-2 focus:ring-black"
-      />
+      <div className="flex flex-wrap items-center gap-3">
+        <input
+          value={search}
+          onChange={(e) => {
+            setSearch(e.target.value);
+            setPage(1);
+          }}
+          placeholder="Search customer..."
+          className="h-11 w-72 rounded-lg border px-4 text-sm outline-none focus:ring-2 focus:ring-black"
+        />
+        <select
+          value={entries}
+          onChange={(e) => {
+            setEntries(Number(e.target.value));
+            setPage(1);
+          }}
+          className="h-11 rounded-lg border px-3 text-sm outline-none focus:ring-2 focus:ring-black"
+        >
+          <option value={10}>10 / page</option>
+          <option value={25}>25 / page</option>
+          <option value={50}>50 / page</option>
+        </select>
+      </div>
 
-      {/* Table */}
       <div className="overflow-x-auto">
-        <table className="w-full text-sm border-t">
+        <table className="w-full border-t text-sm">
           <thead className="border-b bg-gray-50">
             <tr className="text-left">
               <th className="py-3">ID</th>
@@ -139,29 +263,29 @@ export default function Page() {
                 </td>
               </tr>
             ) : (
-              paginated.map((c) => (
-                <tr key={c.id} className="border-b hover:bg-gray-50">
-                  <td className="py-3">{c.id}</td>
-                  <td>{c.name}</td>
-                  <td>{c.mobile}</td>
-                  <td>{c.visit}</td>
-                  <td>{c.orders}</td>
-                  <td>{c.loyalty || 0}</td>
-                  <td>{c.food}</td>
+              paginated.map((customer) => (
+                <tr key={customer.id} className="border-b hover:bg-gray-50">
+                  <td className="py-3">{customer.id}</td>
+                  <td>{customer.name}</td>
+                  <td>{customer.mobile}</td>
+                  <td>{customer.visit}</td>
+                  <td>{customer.orders}</td>
+                  <td>{customer.loyalty}</td>
+                  <td>{customer.food}</td>
                   <td>
                     <span
                       className={`rounded-full px-3 py-1 text-xs ${
-                        c.status === "Active"
-                          ? "bg-green-100 text-green-600"
-                          : "bg-red-100 text-red-600"
+                        customer.status === "Pending"
+                          ? "bg-orange-100 text-orange-600"
+                          : "bg-green-100 text-green-600"
                       }`}
                     >
-                      {c.status}
+                      {customer.status}
                     </span>
                   </td>
                   <td
                     onClick={() => {
-                      setSelected(c);
+                      setSelected(customer);
                       setIsViewOpen(true);
                     }}
                     className="cursor-pointer text-blue-600"
@@ -175,22 +299,21 @@ export default function Page() {
         </table>
       </div>
 
-      {/* Pagination */}
-      <div className="flex justify-between items-center text-sm">
+      <div className="flex items-center justify-between text-sm">
         <span>
           Showing {paginated.length} of {filtered.length}
         </span>
-        <div className="flex border rounded-md overflow-hidden">
+        <div className="flex overflow-hidden rounded-md border">
           <button
-            onClick={() => setPage((p) => Math.max(1, p - 1))}
-            disabled={page === 1}
+            onClick={() => setPage(Math.max(1, safePage - 1))}
+            disabled={safePage === 1}
             className="px-4 py-2 disabled:opacity-40"
           >
             Prev
           </button>
           <button
-            onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-            disabled={page === totalPages}
+            onClick={() => setPage(Math.min(totalPages, safePage + 1))}
+            disabled={safePage === totalPages}
             className="border-l px-4 py-2 disabled:opacity-40"
           >
             Next
@@ -198,111 +321,77 @@ export default function Page() {
         </div>
       </div>
 
-      {/* Add Modal */}
-      {isAddOpen && (
-        <Modal title="Add Customer" onClose={() => setIsAddOpen(false)}>
-          <Input
-            placeholder="Full Name"
-            value={form.name}
-            onChange={(v) => setForm({ ...form, name: v })}
-          />
-          <Input
-            placeholder="Mobile Number"
-            value={form.mobile}
-            onChange={(v) => setForm({ ...form, mobile: v })}
-          />
-          <Input
-            placeholder="Email"
-            value={form.email}
-            onChange={(v) => setForm({ ...form, email: v })}
-          />
-          <Input
-            placeholder="Loyalty Points"
-            value={form.loyalty}
-            onChange={(v) => setForm({ ...form, loyalty: v })}
-          />
-
-          <select
-            value={form.food}
-            onChange={(e) => setForm({ ...form, food: e.target.value })}
-            className="w-full mb-2 rounded border px-3 py-2 text-sm"
-          >
-            <option>Veg</option>
-            <option>Non-Veg</option>
-          </select>
-
-          <StarRating
-            value={form.rating}
-            onChange={(v) => setForm({ ...form, rating: v })}
-          />
-
-          <select
-            value={form.status}
-            onChange={(e) => setForm({ ...form, status: e.target.value })}
-            className="w-full mb-2 rounded border px-3 py-2 text-sm"
-          >
-            <option>Active</option>
-            <option>Blocked</option>
-          </select>
-
-          <button
-            onClick={handleAdd}
-            className="mt-4 w-full rounded bg-black py-2 text-white"
-          >
-            Save Customer
-          </button>
-        </Modal>
-      )}
-
-      {/* View Modal */}
       {isViewOpen && selected && (
         <Modal title="Customer Details" onClose={() => setIsViewOpen(false)}>
-          {Object.entries(selected).map(([k, v]) => (
-            <p key={k} className="text-sm">
-              <b>{k}:</b> {v}
+          <div className="space-y-2 text-sm">
+            <p>
+              <b>Name:</b> {selected.name}
             </p>
-          ))}
+            <p>
+              <b>Mobile:</b> {selected.mobile}
+            </p>
+            <p>
+              <b>Visits:</b> {selected.visit}
+            </p>
+            <p>
+              <b>Orders:</b> {selected.orders}
+            </p>
+            <p>
+              <b>Total Spent:</b> Rs. {selected.totalSpent.toFixed(2)}
+            </p>
+            <p>
+              <b>Loyalty:</b> {selected.loyalty}
+            </p>
+            <p>
+              <b>Favorite Food:</b> {selected.food}
+            </p>
+            <p>
+              <b>Last Order:</b> {selected.lastOrderLabel}
+            </p>
+          </div>
+
+          <div className="mt-4">
+            <p className="mb-2 text-sm font-semibold">Recent Orders</p>
+            {selected.recentOrders.length === 0 ? (
+              <p className="text-sm text-gray-500">No recent orders</p>
+            ) : (
+              <div className="space-y-2">
+                {selected.recentOrders.map((order) => (
+                  <div key={`${order.id}-${order.time}`} className="rounded border p-2 text-xs">
+                    <p>
+                      <b>Order:</b> {order.id}
+                    </p>
+                    <p>
+                      <b>Table:</b> {order.tableNo}
+                    </p>
+                    <p>
+                      <b>Status:</b> {order.status}
+                    </p>
+                    <p>
+                      <b>Total:</b> Rs. {order.total.toFixed(2)}
+                    </p>
+                    <p>
+                      <b>Time:</b> {formatDateTime(order.time)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </Modal>
       )}
     </div>
   );
 }
 
-/* ================== REUSABLE ================== */
-
 const Modal = ({ title, children, onClose }) => (
-  <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center">
-    <div className="w-[420px] bg-white rounded-xl p-6">
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+    <div className="w-[420px] rounded-xl bg-white p-6">
       <h2 className="mb-4 text-lg font-semibold">{title}</h2>
       {children}
       <button onClick={onClose} className="mt-4 w-full rounded border py-2">
         Close
       </button>
     </div>
-  </div>
-);
-
-const Input = ({ placeholder, value, onChange }) => (
-  <input
-    placeholder={placeholder}
-    value={value}
-    onChange={(e) => onChange(e.target.value)}
-    className="mb-2 w-full rounded border px-3 py-2 text-sm"
-  />
-);
-
-const StarRating = ({ value, onChange }) => (
-  <div className="mb-3 flex gap-1">
-    {[1, 2, 3, 4, 5].map((i) => (
-      <span
-        key={i}
-        onClick={() => onChange(i)}
-        className={`cursor-pointer text-xl ${
-          i <= value ? "text-yellow-400" : "text-gray-300"
-        }`}
-      >
-        ★
-      </span>
-    ))}
   </div>
 );

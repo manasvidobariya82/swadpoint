@@ -74,6 +74,7 @@ function CustomerMenuContent() {
   const [menuItems, setMenuItems] = useState([]);
   const [cart, setCart] = useState([]);
   const [customerName, setCustomerName] = useState("");
+  const [customerMobile, setCustomerMobile] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("UPI");
   const [paymentConfig, setPaymentConfig] = useState(DEFAULT_PAYMENT_CONFIG);
   const [isValidTable, setIsValidTable] = useState(true);
@@ -187,6 +188,7 @@ function CustomerMenuContent() {
       id: orderId,
       tableNo,
       customerName: customerName.trim() || "Walk-in",
+      customerMobile: customerMobile.trim(),
       items: normalizedItems,
       total: cartTotal,
       status: "Pending",
@@ -200,6 +202,7 @@ function CustomerMenuContent() {
       id: paymentId,
       orderId,
       customerName: order.customerName,
+      customerMobile: order.customerMobile,
       tableNo,
       amount: cartTotal,
       paymentMethod,
@@ -220,6 +223,7 @@ function CustomerMenuContent() {
     });
     setCart([]);
     setCustomerName("");
+    setCustomerMobile("");
   };
 
   return (
@@ -329,6 +333,13 @@ function CustomerMenuContent() {
                   value={customerName}
                   onChange={(e) => setCustomerName(e.target.value)}
                   placeholder="Customer name (optional)"
+                  className="w-full rounded-lg border px-3 py-2 text-sm"
+                />
+                <input
+                  type="tel"
+                  value={customerMobile}
+                  onChange={(e) => setCustomerMobile(e.target.value)}
+                  placeholder="Mobile number (optional)"
                   className="w-full rounded-lg border px-3 py-2 text-sm"
                 />
 

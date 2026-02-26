@@ -71,6 +71,21 @@ const parseItemsQuery = (value) => {
   }
 };
 
+const sanitizeMenuItems = (value) => {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .filter((item) => item && typeof item === "object")
+    .map((item, index) => ({
+      id: item.id || `menu-item-${index}`,
+      name: String(item.name || "").trim(),
+      description: String(item.description || "").trim(),
+      category: normalizeCategory(item.category),
+      price: toNumber(item.price),
+    }))
+    .filter((item) => item.name);
+};
+
 const postJson = async (url, payload) => {
   const response = await fetch(url, {
     method: "POST",
@@ -107,10 +122,11 @@ function CustomerMenuContent() {
   const addTimeoutRef = useRef({});
 
   const queryMenuItems = useMemo(() => parseItemsQuery(itemsParam), [itemsParam]);
-  const menuItems = useMemo(
-    () => (queryMenuItems.length > 0 ? queryMenuItems : getMenu()),
-    [queryMenuItems]
-  );
+  const menuItems = useMemo(() => {
+    const sourceItems =
+      queryMenuItems.length > 0 ? queryMenuItems : getMenu();
+    return sanitizeMenuItems(sourceItems);
+  }, [queryMenuItems]);
   const menuSource = queryMenuItems.length > 0 ? "query" : "local";
   const groupedMenuItems = useMemo(() => {
     const grouped = new Map();

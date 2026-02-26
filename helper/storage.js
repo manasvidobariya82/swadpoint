@@ -24,17 +24,23 @@ const writeJSON = (key, value) => {
   localStorage.setItem(key, JSON.stringify(value));
 };
 
-export const getMenu = () => readJSON(STORAGE_KEYS.menu, []);
+const toArray = (value) => (Array.isArray(value) ? value : []);
+
+const sanitizeArrayObjects = (value) =>
+  toArray(value).filter((item) => item && typeof item === "object");
+
+export const getMenu = () => sanitizeArrayObjects(readJSON(STORAGE_KEYS.menu, []));
 export const saveMenu = (menu) => writeJSON(STORAGE_KEYS.menu, menu);
 
-export const getOrders = () => readJSON(STORAGE_KEYS.orders, []);
+export const getOrders = () => sanitizeArrayObjects(readJSON(STORAGE_KEYS.orders, []));
 export const saveOrders = (orders) => writeJSON(STORAGE_KEYS.orders, orders);
 
-export const getPayments = () => readJSON(STORAGE_KEYS.payments, []);
+export const getPayments = () =>
+  sanitizeArrayObjects(readJSON(STORAGE_KEYS.payments, []));
 export const savePayments = (payments) =>
   writeJSON(STORAGE_KEYS.payments, payments);
 
-export const getTables = () => readJSON(STORAGE_KEYS.tables, []);
+export const getTables = () => sanitizeArrayObjects(readJSON(STORAGE_KEYS.tables, []));
 export const saveTables = (tables) => writeJSON(STORAGE_KEYS.tables, tables);
 
 export const getPaymentConfig = () =>

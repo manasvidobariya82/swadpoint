@@ -48,6 +48,21 @@ const normalizeMenuCategory = (value) => {
   return category || DEFAULT_MENU_CATEGORY;
 };
 
+const sanitizeMenuItems = (value) => {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .filter((item) => item && typeof item === "object")
+    .map((item, index) => ({
+      id: item.id || `menu-item-${index}`,
+      name: String(item.name || "").trim(),
+      description: String(item.description || "").trim(),
+      category: normalizeMenuCategory(item.category),
+      price: Number(item.price) || 0,
+    }))
+    .filter((item) => item.name);
+};
+
 export default function TablesPage() {
   const [tables, setTables] = useState(() => getTables());
   const [menuItems] = useState(() => getMenu());
@@ -89,14 +104,8 @@ export default function TablesPage() {
     const params = new URLSearchParams();
     params.set("table", tableNumber);
 
-    if (menuItems.length > 0) {
-      const compactItems = menuItems.map((item) => ({
-        id: item.id,
-        name: item.name,
-        description: String(item.description || "").trim(),
-        category: normalizeMenuCategory(item.category),
-        price: Number(item.price) || 0,
-      }));
+    const compactItems = sanitizeMenuItems(menuItems);
+    if (compactItems.length > 0) {
       params.set("items", JSON.stringify(compactItems));
     }
 
@@ -282,4 +291,3 @@ export default function TablesPage() {
     </div>
   );
 }
-

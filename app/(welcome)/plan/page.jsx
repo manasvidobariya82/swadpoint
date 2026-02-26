@@ -735,8 +735,8 @@ export default function PlanPage() {
           </div>
         </div>
 
-        <MarketingFooter />
       </div>
+      <MarketingFooter />
     </div>
   );
 }

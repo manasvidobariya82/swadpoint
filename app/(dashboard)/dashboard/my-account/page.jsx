@@ -114,7 +114,7 @@ export default function ProfilePage() {
       label: "Recipes Created",
       value: "247",
       icon: "🍳",
-      color: "bg-orange-50 text-orange-700",
+      color: "bg-indigo-50 text-indigo-700",
     },
     {
       label: "Menu Items",
@@ -163,12 +163,12 @@ export default function ProfilePage() {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-amber-50 to-orange-50 py-8 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gradient-to-br from-sky-50 to-indigo-50 py-8 px-4 sm:px-6 lg:px-8">
       <div className="max-w-6xl mx-auto">
         {/* Header with food theme */}
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-3">
-            <div className="p-3 bg-gradient-to-r from-amber-500 to-orange-500 rounded-xl">
+            <div className="p-3 bg-gradient-to-r from-sky-500 to-indigo-500 rounded-xl">
               <span className="text-2xl">👨‍🍳</span>
             </div>
             <div>
@@ -202,18 +202,18 @@ export default function ProfilePage() {
           {/* Left Column - Profile Overview */}
           <div className="lg:col-span-2 space-y-8">
             {/* Profile Card with Food Theme */}
-            <div className="bg-white rounded-2xl shadow-lg border border-amber-100 p-6">
+            <div className="bg-white rounded-2xl shadow-lg border border-sky-100 p-6">
               <div className="flex justify-between items-start mb-6">
                 <div className="flex items-center space-x-4">
                   <div className="relative">
-                    <div className="w-24 h-24 rounded-2xl overflow-hidden bg-gradient-to-br from-amber-200 to-orange-200 border-4 border-white shadow-lg">
+                    <div className="w-24 h-24 rounded-2xl overflow-hidden bg-gradient-to-br from-sky-200 to-indigo-200 border-4 border-white shadow-lg">
                       <img
                         src={user.avatar}
                         alt="Chef Profile"
                         className="w-full h-full object-cover"
                       />
                     </div>
-                    <label className="absolute -bottom-2 -right-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white p-2 rounded-full cursor-pointer hover:from-amber-600 hover:to-orange-600 shadow-lg transition-all hover:scale-105">
+                    <label className="absolute -bottom-2 -right-2 bg-gradient-to-r from-sky-500 to-indigo-500 text-white p-2 rounded-full cursor-pointer hover:from-sky-600 hover:to-indigo-600 shadow-lg transition-all hover:scale-105">
                       <input
                         type="file"
                         accept="image/*"
@@ -247,13 +247,13 @@ export default function ProfilePage() {
                       <h2 className="text-2xl font-bold text-gray-900">
                         {user.name}
                       </h2>
-                      <span className="px-2 py-1 bg-gradient-to-r from-amber-500 to-orange-500 text-white text-xs font-semibold rounded-full">
+                      <span className="px-2 py-1 bg-gradient-to-r from-sky-500 to-indigo-500 text-white text-xs font-semibold rounded-full">
                         {user.subscription}
                       </span>
                     </div>
                     <p className="text-gray-600">{user.email}</p>
                     <div className="flex items-center gap-2 mt-1">
-                      <span className="text-sm text-amber-600">
+                      <span className="text-sm text-sky-600">
                         🍽️ {user.restaurant}
                       </span>
                       <span className="text-sm text-gray-500">
@@ -264,7 +264,7 @@ export default function ProfilePage() {
                 </div>
                 <button
                   onClick={() => setEditMode(!editMode)}
-                  className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl hover:from-amber-600 hover:to-orange-600 transition-all shadow-md hover:shadow-lg"
+                  className="px-4 py-2 bg-gradient-to-r from-sky-500 to-indigo-500 text-white rounded-xl hover:from-sky-600 hover:to-indigo-600 transition-all shadow-md hover:shadow-lg"
                   disabled={isLoading}
                 >
                   {editMode ? "Cancel" : "Edit Profile"}
@@ -276,7 +276,7 @@ export default function ProfilePage() {
                 {stats.map((stat, index) => (
                   <div
                     key={index}
-                    className={`${stat.color} rounded-xl p-4 text-center border border-transparent hover:border-amber-200 transition-all`}
+                    className={`${stat.color} rounded-xl p-4 text-center border border-transparent hover:border-sky-200 transition-all`}
                   >
                     <div className="text-3xl mb-1">{stat.icon}</div>
                     <div className="text-2xl font-bold">{stat.value}</div>
@@ -294,7 +294,7 @@ export default function ProfilePage() {
                 </h3>
                 <p className="text-gray-700 mb-4">{user.bio}</p>
                 <div className="flex flex-wrap gap-2">
-                  <span className="px-3 py-1 bg-amber-100 text-amber-800 rounded-full text-sm font-medium">
+                  <span className="px-3 py-1 bg-sky-100 text-sky-800 rounded-full text-sm font-medium">
                     {user.specialty}
                   </span>
                   {certifications.slice(0, 2).map((cert, idx) => (
@@ -310,7 +310,7 @@ export default function ProfilePage() {
 
               {/* Contact Info */}
               <div className="space-y-3">
-                <div className="flex items-center text-gray-700 p-3 bg-amber-50 rounded-lg">
+                <div className="flex items-center text-gray-700 p-3 bg-sky-50 rounded-lg">
                   <div className="p-2 bg-white rounded-lg mr-3 shadow-sm">
                     <span>📞</span>
                   </div>
@@ -349,9 +349,9 @@ export default function ProfilePage() {
 
             {/* Edit Form */}
             {editMode && (
-              <div className="bg-white rounded-2xl shadow-lg border border-amber-100 p-6">
+              <div className="bg-white rounded-2xl shadow-lg border border-sky-100 p-6">
                 <div className="flex items-center gap-3 mb-6">
-                  <div className="p-2 bg-gradient-to-r from-amber-500 to-orange-500 rounded-lg">
+                  <div className="p-2 bg-gradient-to-r from-sky-500 to-indigo-500 rounded-lg">
                     <span className="text-xl">✏️</span>
                   </div>
                   <h3 className="text-xl font-bold text-gray-900">
@@ -369,7 +369,7 @@ export default function ProfilePage() {
                         name="name"
                         value={formData.name}
                         onChange={handleChange}
-                        className="w-full px-4 py-3 border border-amber-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-amber-50/50"
+                        className="w-full px-4 py-3 border border-sky-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-sky-50/50"
                         required
                       />
                     </div>
@@ -383,7 +383,7 @@ export default function ProfilePage() {
                         name="email"
                         value={formData.email}
                         onChange={handleChange}
-                        className="w-full px-4 py-3 border border-amber-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-amber-50/50"
+                        className="w-full px-4 py-3 border border-sky-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-sky-50/50"
                         required
                       />
                     </div>
@@ -397,7 +397,7 @@ export default function ProfilePage() {
                         name="restaurant"
                         value={formData.restaurant}
                         onChange={handleChange}
-                        className="w-full px-4 py-3 border border-amber-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-amber-50/50"
+                        className="w-full px-4 py-3 border border-sky-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-sky-50/50"
                       />
                     </div>
 
@@ -410,7 +410,7 @@ export default function ProfilePage() {
                         name="location"
                         value={formData.location}
                         onChange={handleChange}
-                        className="w-full px-4 py-3 border border-amber-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-amber-50/50"
+                        className="w-full px-4 py-3 border border-sky-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-sky-50/50"
                       />
                     </div>
 
@@ -423,7 +423,7 @@ export default function ProfilePage() {
                         value={formData.bio}
                         onChange={handleChange}
                         rows="4"
-                        className="w-full px-4 py-3 border border-amber-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-amber-50/50"
+                        className="w-full px-4 py-3 border border-sky-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-sky-50/50"
                         placeholder="Share your culinary journey, specialties, and passion..."
                       />
                     </div>
@@ -437,7 +437,7 @@ export default function ProfilePage() {
                         name="website"
                         value={formData.website}
                         onChange={handleChange}
-                        className="w-full px-4 py-3 border border-amber-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-amber-50/50"
+                        className="w-full px-4 py-3 border border-sky-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-sky-50/50"
                         placeholder="https://your-restaurant.com"
                       />
                     </div>
@@ -451,7 +451,7 @@ export default function ProfilePage() {
                         name="phone"
                         value={formData.phone}
                         onChange={handleChange}
-                        className="w-full px-4 py-3 border border-amber-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-amber-50/50"
+                        className="w-full px-4 py-3 border border-sky-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-sky-50/50"
                       />
                     </div>
 
@@ -463,7 +463,7 @@ export default function ProfilePage() {
                         name="specialty"
                         value={formData.specialty}
                         onChange={handleChange}
-                        className="w-full px-4 py-3 border border-amber-200 rounded-xl focus:ring-2 focus:ring-amber-500 focus:border-amber-500 bg-amber-50/50"
+                        className="w-full px-4 py-3 border border-sky-200 rounded-xl focus:ring-2 focus:ring-sky-500 focus:border-sky-500 bg-sky-50/50"
                       >
                         <option value="Italian Cuisine">Italian</option>
                         <option value="French Cuisine">French</option>
@@ -479,7 +479,7 @@ export default function ProfilePage() {
                     <button
                       type="button"
                       onClick={() => setEditMode(false)}
-                      className="px-6 py-3 border border-amber-300 rounded-xl text-gray-700 hover:bg-amber-50 transition-all font-medium"
+                      className="px-6 py-3 border border-sky-300 rounded-xl text-gray-700 hover:bg-sky-50 transition-all font-medium"
                       disabled={isLoading}
                     >
                       Cancel
@@ -487,7 +487,7 @@ export default function ProfilePage() {
                     <button
                       type="submit"
                       disabled={isLoading}
-                      className="px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 text-white rounded-xl hover:from-amber-600 hover:to-orange-600 transition-all shadow-md hover:shadow-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                      className="px-6 py-3 bg-gradient-to-r from-sky-500 to-indigo-500 text-white rounded-xl hover:from-sky-600 hover:to-indigo-600 transition-all shadow-md hover:shadow-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                     >
                       {isLoading ? (
                         <span className="flex items-center gap-2">
@@ -596,9 +596,9 @@ export default function ProfilePage() {
                     />
                   </svg>
                 </button>
-                <button className="w-full text-left px-4 py-3 rounded-xl hover:bg-orange-50 transition-all flex items-center justify-between group border border-transparent hover:border-orange-200">
+                <button className="w-full text-left px-4 py-3 rounded-xl hover:bg-indigo-50 transition-all flex items-center justify-between group border border-transparent hover:border-indigo-200">
                   <div className="flex items-center gap-3">
-                    <div className="p-2 bg-orange-100 rounded-lg group-hover:bg-orange-200">
+                    <div className="p-2 bg-indigo-100 rounded-lg group-hover:bg-indigo-200">
                       <span>🍳</span>
                     </div>
                     <div>
@@ -611,7 +611,7 @@ export default function ProfilePage() {
                     </div>
                   </div>
                   <svg
-                    className="w-5 h-5 text-orange-400"
+                    className="w-5 h-5 text-indigo-400"
                     fill="none"
                     stroke="currentColor"
                     viewBox="0 0 24 24"
@@ -628,15 +628,15 @@ export default function ProfilePage() {
             </div>
 
             {/* Kitchen Activity */}
-            <div className="bg-white rounded-2xl shadow-lg border border-amber-100 p-6">
+            <div className="bg-white rounded-2xl shadow-lg border border-sky-100 p-6">
               <h3 className="text-lg font-bold text-gray-900 mb-4 flex items-center gap-2">
-                <span>🔥</span> Today's Kitchen Activity
+                <span>🔥</span> Today&apos;s Kitchen Activity
               </h3>
               <div className="space-y-4">
                 {activities.map((activity) => (
                   <div
                     key={activity.id}
-                    className="border-l-4 border-amber-500 pl-4 py-3 hover:bg-amber-50/50 rounded-r-lg transition-all"
+                    className="border-l-4 border-sky-500 pl-4 py-3 hover:bg-sky-50/50 rounded-r-lg transition-all"
                   >
                     <div className="flex items-start gap-3">
                       <div className="p-2 bg-white rounded-lg shadow-sm">
@@ -687,7 +687,7 @@ export default function ProfilePage() {
             </div>
 
             {/* Subscription & Billing */}
-            <div className="bg-gradient-to-r from-amber-500 to-orange-500 rounded-2xl shadow-lg p-6 text-white">
+            <div className="bg-gradient-to-r from-sky-500 to-indigo-500 rounded-2xl shadow-lg p-6 text-white">
               <h3 className="text-lg font-bold mb-4">Subscription Plan</h3>
               <div className="mb-4">
                 <div className="text-3xl font-bold mb-1">
@@ -696,7 +696,7 @@ export default function ProfilePage() {
                 <div className="opacity-90">$49/month • Auto-renewal</div>
               </div>
               <div className="space-y-3">
-                <button className="w-full text-center px-4 py-3 bg-white text-amber-700 rounded-xl hover:bg-amber-50 transition-all font-semibold">
+                <button className="w-full text-center px-4 py-3 bg-white text-sky-700 rounded-xl hover:bg-sky-50 transition-all font-semibold">
                   Upgrade Plan
                 </button>
                 <button className="w-full text-center px-4 py-3 bg-transparent border-2 border-white text-white rounded-xl hover:bg-white/10 transition-all">
@@ -728,3 +728,4 @@ export default function ProfilePage() {
     </div>
   );
 }
+

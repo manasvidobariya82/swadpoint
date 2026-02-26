@@ -139,6 +139,7 @@ import {
   Copy,
   ExternalLink,
   ChevronRight,
+  X,
 } from "lucide-react";
 import { Toaster, toast } from "react-hot-toast";
 
@@ -193,6 +194,36 @@ const ENCRYPTION_TYPES = [
   },
   { value: "SSL", label: "SSL", description: "Secure Sockets Layer" },
   { value: "NONE", label: "No Encryption", description: "Not recommended" },
+];
+
+const SETTINGS_GUIDE = [
+  {
+    title: "Server Settings",
+    summary: "Host, port, and encryption define how your app talks to the mail server.",
+    icon: Server,
+    style: "bg-blue-50 border-blue-200 text-blue-700",
+  },
+  {
+    title: "Authentication",
+    summary:
+      "Username and app password validate your sender identity before email delivery.",
+    icon: Lock,
+    style: "bg-emerald-50 border-emerald-200 text-emerald-700",
+  },
+  {
+    title: "Sender Identity",
+    summary:
+      "From name and from email are shown to customers in receipts and notifications.",
+    icon: Mail,
+    style: "bg-indigo-50 border-indigo-200 text-indigo-700",
+  },
+  {
+    title: "Security Controls",
+    summary:
+      "Use TLS and app passwords to keep communication secure and avoid login failures.",
+    icon: Shield,
+    style: "bg-amber-50 border-amber-200 text-amber-700",
+  },
 ];
 
 export default function SMTPSettingsPage() {
@@ -391,6 +422,25 @@ ${smtpConfig.fromName || "Your Restaurant Team"}`,
           </div>
         </div>
 
+        <div className="mb-8 grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {SETTINGS_GUIDE.map((item) => {
+            const Icon = item.icon;
+
+            return (
+              <div
+                key={item.title}
+                className={`rounded-xl border p-4 ${item.style}`}
+              >
+                <div className="mb-2 flex items-center gap-2">
+                  <Icon size={18} />
+                  <h3 className="font-semibold">{item.title}</h3>
+                </div>
+                <p className="text-sm text-gray-700">{item.summary}</p>
+              </div>
+            );
+          })}
+        </div>
+
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
           {/* Left Column - Providers & Status */}
           <div className="lg:col-span-1">
@@ -433,7 +483,7 @@ ${smtpConfig.fromName || "Your Restaurant Team"}`,
                     {connectionStatus === "connected"
                       ? "Your SMTP settings are configured correctly. You can send emails."
                       : connectionStatus === "failed"
-                      ? "There's an issue with your SMTP configuration. Please check and test."
+                      ? "There is an issue with your SMTP configuration. Please check and test."
                       : "Configure SMTP settings to start sending emails to customers."}
                   </p>
                 </div>
@@ -551,7 +601,7 @@ ${smtpConfig.fromName || "Your Restaurant Team"}`,
 
                   <div className="text-xs text-gray-500 mb-2">Preview:</div>
                   <div className="text-sm text-gray-700 bg-white p-3 rounded border">
-                    Hi Customer, thank you for choosing us! We're excited to
+                    Hi Customer, thank you for choosing us! We are excited to
                     serve you...
                   </div>
 
@@ -974,7 +1024,7 @@ ${smtpConfig.fromName || "Your Restaurant Team"}`,
                   </h4>
                   <p className="text-gray-700">
                     SMTP (Simple Mail Transfer Protocol) is used to send emails
-                    from your application to customers. It's essential for order
+                    from your application to customers. It is essential for order
                     confirmations, receipts, notifications, and marketing
                     emails.
                   </p>

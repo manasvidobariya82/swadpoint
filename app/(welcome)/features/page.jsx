@@ -162,25 +162,25 @@ export default function FeaturesPage() {
       number: "01",
       title: "Create Menu",
       description: "Add dishes, prices, and categories.",
-      icon: <FaCamera />,
+      icon: <GiCookingPot />,
     },
     {
       number: "02",
       title: "Generate QR Codes",
       description: "Create unique QR codes for tables.",
-      icon: <FaMagic />,
+      icon: <FaQrcode />,
     },
     {
       number: "03",
       title: "Activate Dashboard",
       description: "Manage orders, payments, and reports.",
-      icon: <FaQrcode />,
+      icon: <FaChartLine />,
     },
     {
       number: "04",
       title: "Go Live",
       description: "Customers scan, order, and pay instantly.",
-      icon: <FaEye />,
+      icon: <FaUsers />,
     },
   ];
 

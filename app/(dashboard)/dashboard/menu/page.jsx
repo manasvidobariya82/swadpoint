@@ -3,6 +3,14 @@
 import { useEffect, useState } from "react";
 import { getMenu, saveMenu } from "@/helper/storage";
 
+const MENU_CATEGORIES = ["Main Course", "Starter", "Dessert", "Beverage"];
+const CATEGORY_FILTERS = ["All", ...MENU_CATEGORIES];
+
+const normalizeCategory = (value) => {
+  const category = String(value || "").trim();
+  return MENU_CATEGORIES.includes(category) ? category : "Main Course";
+};
+
 const EMPTY_FORM = {
   name: "",
   price: "",
@@ -23,7 +31,7 @@ const parseItemsQuery = (value) => {
         id: item.id || `query-item-${index}`,
         name: String(item.name || "").trim(),
         description: String(item.description || "").trim(),
-        category: String(item.category || "Main Course"),
+        category: normalizeCategory(item.category),
         price: Number(item.price) || 0,
       }))
       .filter((item) => item.name);
@@ -37,6 +45,7 @@ export default function AdminMenuPage() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
   const [menuSource, setMenuSource] = useState("local");
+  const [activeCategory, setActiveCategory] = useState("All");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -80,7 +89,7 @@ export default function AdminMenuPage() {
               name,
               description,
               price,
-              category: form.category,
+              category: normalizeCategory(form.category),
             }
           : item
       );
@@ -94,7 +103,7 @@ export default function AdminMenuPage() {
       name,
       description,
       price,
-      category: form.category,
+      category: normalizeCategory(form.category),
       createdAt: new Date().toISOString(),
     };
 
@@ -108,7 +117,7 @@ export default function AdminMenuPage() {
       name: item.name || "",
       price: String(item.price || ""),
       description: item.description || "",
-      category: item.category || "Main Course",
+      category: normalizeCategory(item.category),
     });
   };
 
@@ -119,6 +128,19 @@ export default function AdminMenuPage() {
       resetForm();
     }
   };
+
+  const filteredItems = menuItems.filter((item) =>
+    activeCategory === "All"
+      ? true
+      : normalizeCategory(item.category) === activeCategory
+  );
+
+  const groupedItems = MENU_CATEGORIES.map((category) => ({
+    category,
+    items: filteredItems.filter(
+      (item) => normalizeCategory(item.category) === category
+    ),
+  })).filter((group) => group.items.length > 0);
 
   return (
     <div className="min-h-screen bg-gray-100 p-6">
@@ -161,10 +183,9 @@ export default function AdminMenuPage() {
               onChange={(e) => setForm({ ...form, category: e.target.value })}
               className="w-full rounded-lg border px-4 py-2"
             >
-              <option>Main Course</option>
-              <option>Starter</option>
-              <option>Dessert</option>
-              <option>Beverage</option>
+              {MENU_CATEGORIES.map((category) => (
+                <option key={category}>{category}</option>
+              ))}
             </select>
 
             <textarea
@@ -199,41 +220,69 @@ export default function AdminMenuPage() {
 
         <div className="rounded-xl bg-white p-6 shadow">
           <h2 className="text-lg font-semibold text-gray-900">Menu Items</h2>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {CATEGORY_FILTERS.map((category) => (
+              <button
+                key={category}
+                onClick={() => setActiveCategory(category)}
+                className={`rounded-full border px-4 py-1.5 text-sm font-medium ${
+                  activeCategory === category
+                    ? "border-blue-600 bg-blue-600 text-white"
+                    : "border-gray-300 text-gray-700 hover:bg-gray-50"
+                }`}
+              >
+                {category}
+              </button>
+            ))}
+          </div>
 
           {menuItems.length === 0 ? (
             <p className="mt-3 text-sm text-gray-500">No items added yet.</p>
+          ) : groupedItems.length === 0 ? (
+            <p className="mt-3 text-sm text-gray-500">
+              No items found for {activeCategory}.
+            </p>
           ) : (
             <div className="mt-4 space-y-3">
-              {menuItems.map((item) => (
-                <div
-                  key={item.id}
-                  className="flex flex-col justify-between gap-3 rounded-lg border p-4 md:flex-row md:items-center"
-                >
-                  <div>
-                    <p className="font-semibold text-gray-900">{item.name}</p>
-                    <p className="text-sm text-gray-500">
-                      {item.description || "No description"}
-                    </p>
-                    <p className="mt-1 text-sm text-gray-600">
-                      {item.category || "Main Course"}
-                    </p>
-                  </div>
+              {groupedItems.map((group) => (
+                <div key={group.category} className="space-y-3">
+                  <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+                    {group.category}
+                  </h3>
+                  {group.items.map((item) => (
+                    <div
+                      key={item.id}
+                      className="flex flex-col justify-between gap-3 rounded-lg border p-4 md:flex-row md:items-center"
+                    >
+                      <div>
+                        <p className="font-semibold text-gray-900">{item.name}</p>
+                        <p className="text-sm text-gray-500">
+                          {item.description || "No description"}
+                        </p>
+                        <p className="mt-1 text-sm text-gray-600">
+                          {normalizeCategory(item.category)}
+                        </p>
+                      </div>
 
-                  <div className="flex items-center gap-4">
-                    <p className="font-bold text-green-600">Rs. {item.price}</p>
-                    <button
-                      onClick={() => startEdit(item)}
-                      className="rounded border border-blue-200 px-3 py-1 text-sm text-blue-700 hover:bg-blue-50"
-                    >
-                      Edit
-                    </button>
-                    <button
-                      onClick={() => removeItem(item.id)}
-                      className="rounded border border-red-200 px-3 py-1 text-sm text-red-700 hover:bg-red-50"
-                    >
-                      Delete
-                    </button>
-                  </div>
+                      <div className="flex items-center gap-4">
+                        <p className="font-bold text-green-600">
+                          Rs. {item.price}
+                        </p>
+                        <button
+                          onClick={() => startEdit(item)}
+                          className="rounded border border-blue-200 px-3 py-1 text-sm text-blue-700 hover:bg-blue-50"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          onClick={() => removeItem(item.id)}
+                          className="rounded border border-red-200 px-3 py-1 text-sm text-red-700 hover:bg-red-50"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               ))}
             </div>

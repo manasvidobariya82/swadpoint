@@ -4,9 +4,18 @@ import { useEffect, useState } from "react";
 import QRCode from "react-qr-code";
 import { toast, Toaster } from "react-hot-toast";
 import { Copy, ExternalLink, Trash2 } from "lucide-react";
-import { getPaymentConfig, getTables, saveTables } from "@/helper/storage";
+import { getMenu, getPaymentConfig, getTables, saveTables } from "@/helper/storage";
 
 const MENU_BASE_URL_KEY = "restaurantMenuBaseUrl";
+const DEFAULT_MENU_CATEGORY = "Main Course";
+const QR_SAFE_URL_LENGTH = 2600;
+const MENU_NAME_MAX_LENGTH = 36;
+const CATEGORY_TO_CODE = {
+  "Main Course": "m",
+  Starter: "s",
+  Dessert: "d",
+  Beverage: "b",
+};
 
 const normalizeBaseUrl = (value) => {
   const trimmed = String(value || "").trim();
@@ -41,6 +50,35 @@ const isLocalHostUrl = (value) => {
     return false;
   }
 };
+
+const normalizeMenuCategory = (value) => {
+  const category = String(value || "").trim();
+  return category || DEFAULT_MENU_CATEGORY;
+};
+
+const toCategoryCode = (value) =>
+  CATEGORY_TO_CODE[normalizeMenuCategory(value)] || "m";
+
+const sanitizeMenuForQr = (value) => {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .filter((item) => item && typeof item === "object")
+    .map((item) => ({
+      n: String(item.name || "").trim().slice(0, MENU_NAME_MAX_LENGTH),
+      p: Number(item.price) || 0,
+      c: toCategoryCode(item.category),
+    }))
+    .filter((item) => item.n);
+};
+
+const serializeMenuForHash = (items) =>
+  items
+    .map((item) => {
+      const encodedName = encodeURIComponent(item.n);
+      return `${encodedName}~${item.p}~${item.c}`;
+    })
+    .join("|");
 
 export default function TablesPage() {
   const [tables, setTables] = useState(() => getTables());
@@ -82,6 +120,16 @@ export default function TablesPage() {
     const params = new URLSearchParams();
     params.set("table", tableNumber);
 
+    const qrMenuItems = sanitizeMenuForQr(getMenu());
+    const compactPayload = serializeMenuForHash(qrMenuItems);
+    let menuEmbedded = false;
+    if (qrMenuItems.length > 0) {
+      const candidate = `${origin}/menu?${params.toString()}#m=${compactPayload}`;
+      if (candidate.length <= QR_SAFE_URL_LENGTH) {
+        menuEmbedded = true;
+      }
+    }
+
     const paymentConfig = getPaymentConfig();
     const upiId = String(paymentConfig?.upiId || "").trim();
     const payeeName = String(paymentConfig?.payeeName || "").trim();
@@ -89,7 +137,15 @@ export default function TablesPage() {
     if (upiId) params.set("upiId", upiId);
     if (payeeName) params.set("payeeName", payeeName);
 
-    return `${origin}/menu?${params.toString()}`;
+    const baseUrl = `${origin}/menu?${params.toString()}`;
+    const urlWithHash =
+      menuEmbedded && compactPayload ? `${baseUrl}#m=${compactPayload}` : baseUrl;
+
+    return {
+      url: urlWithHash,
+      menuEmbedded,
+      hasMenu: qrMenuItems.length > 0,
+    };
   };
 
   const persistTables = (nextTables) => {
@@ -115,7 +171,7 @@ export default function TablesPage() {
       return;
     }
 
-    const qrUrl = buildMenuUrl(normalizedTable);
+    const { url: qrUrl, menuEmbedded, hasMenu } = buildMenuUrl(normalizedTable);
 
     const nextTables = [
       ...tables,
@@ -129,7 +185,11 @@ export default function TablesPage() {
 
     persistTables(nextTables);
     setTableNo("");
-    toast.success("QR generated");
+    if (hasMenu && !menuEmbedded) {
+      toast.error("Menu too large for QR. Reduce item names or item count.");
+    } else {
+      toast.success("QR generated");
+    }
   };
 
   const deleteTable = (id) => {
@@ -218,7 +278,9 @@ export default function TablesPage() {
         ) : (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {tables.map((table) => {
-              const currentUrl = buildMenuUrl(table.tableNo);
+              const { url: currentUrl, menuEmbedded, hasMenu } = buildMenuUrl(
+                table.tableNo
+              );
 
               return (
                 <div key={table.id} className="rounded-xl bg-white p-6 shadow">
@@ -255,6 +317,11 @@ export default function TablesPage() {
                       Test
                     </button>
                   </div>
+                  {hasMenu && !menuEmbedded && (
+                    <p className="mt-2 text-xs font-medium text-red-600">
+                      Menu not embedded: QR too long.
+                    </p>
+                  )}
                 </div>
               );
             })}

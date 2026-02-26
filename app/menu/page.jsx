@@ -21,6 +21,12 @@ const CATEGORY_SORT_PRIORITY = [
   "Dessert",
   "Beverage",
 ];
+const CATEGORY_CODE_MAP = {
+  m: DEFAULT_MENU_CATEGORY,
+  s: "Starter",
+  d: "Dessert",
+  b: "Beverage",
+};
 
 const toNumber = (value) => {
   const parsed = Number(value);
@@ -30,6 +36,12 @@ const toNumber = (value) => {
 const normalizeCategory = (value) => {
   const category = String(value || "").trim();
   return category || DEFAULT_MENU_CATEGORY;
+};
+
+const decodeCategory = (value) => {
+  const raw = String(value || "").trim().toLowerCase();
+  if (CATEGORY_CODE_MAP[raw]) return CATEGORY_CODE_MAP[raw];
+  return normalizeCategory(value);
 };
 
 const sanitizePaymentConfig = (config) => {
@@ -59,16 +71,43 @@ const parseItemsQuery = (value) => {
     return parsed
       .filter((item) => item && typeof item === "object")
       .map((item, index) => ({
-        id: item.id || `query-item-${index}`,
-        name: String(item.name || "").trim(),
-        description: String(item.description || "").trim(),
-        category: normalizeCategory(item.category),
-        price: toNumber(item.price),
+        id: item.id || item.i || `query-item-${index}`,
+        name: String(item.name || item.n || "").trim(),
+        description: String(item.description || item.d || "").trim(),
+        category: decodeCategory(item.category || item.c),
+        price: toNumber(item.price ?? item.p),
       }))
       .filter((item) => item.name);
   } catch {
     return [];
   }
+};
+
+const parseItemsHash = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return [];
+
+  return raw
+    .split("|")
+    .map((entry, index) => {
+      const [encodedName, priceValue, categoryCode] = entry.split("~");
+      const candidateName = String(encodedName || "").trim();
+      let name = candidateName;
+      try {
+        name = decodeURIComponent(candidateName);
+      } catch {
+        name = candidateName;
+      }
+
+      return {
+        id: `hash-item-${index}`,
+        name: String(name || "").trim(),
+        description: "",
+        category: decodeCategory(categoryCode),
+        price: toNumber(priceValue),
+      };
+    })
+    .filter((item) => item.name);
 };
 
 const sanitizeMenuItems = (value) => {
@@ -127,6 +166,13 @@ function CustomerMenuContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [recentlyAdded, setRecentlyAdded] = useState({});
   const [serverMenuItems, setServerMenuItems] = useState([]);
+  const [hashMenuItems] = useState(() => {
+    if (typeof window === "undefined") return [];
+    const hash = window.location.hash || "";
+    const payload = hash.startsWith("#") ? hash.slice(1) : hash;
+    const hashParams = new URLSearchParams(payload);
+    return parseItemsHash(hashParams.get("m"));
+  });
   const addTimeoutRef = useRef({});
 
   const queryMenuItems = useMemo(() => parseItemsQuery(itemsParam), [itemsParam]);
@@ -161,11 +207,12 @@ function CustomerMenuContent() {
   }, [queryMenuItems.length]);
 
   const menuItems = useMemo(() => {
+    if (hashMenuItems.length > 0) return hashMenuItems;
     if (queryMenuItems.length > 0) return queryMenuItems;
     if (serverMenuItems.length > 0) return serverMenuItems;
     return localMenuItems;
-  }, [queryMenuItems, serverMenuItems, localMenuItems]);
-  const menuSource = queryMenuItems.length > 0 ? "query" : "server";
+  }, [hashMenuItems, queryMenuItems, serverMenuItems, localMenuItems]);
+  const menuSource = hashMenuItems.length > 0 ? "hash" : queryMenuItems.length > 0 ? "query" : "server";
   const groupedMenuItems = useMemo(() => {
     const grouped = new Map();
 

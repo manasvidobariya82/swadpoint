@@ -7,6 +7,7 @@ import { Copy, ExternalLink, Trash2 } from "lucide-react";
 import { getMenu, getPaymentConfig, getTables, saveTables } from "@/helper/storage";
 
 const MENU_BASE_URL_KEY = "restaurantMenuBaseUrl";
+const DEFAULT_MENU_CATEGORY = "Main Course";
 
 const normalizeBaseUrl = (value) => {
   const trimmed = String(value || "").trim();
@@ -40,6 +41,11 @@ const isLocalHostUrl = (value) => {
   } catch {
     return false;
   }
+};
+
+const normalizeMenuCategory = (value) => {
+  const category = String(value || "").trim();
+  return category || DEFAULT_MENU_CATEGORY;
 };
 
 export default function TablesPage() {
@@ -87,6 +93,8 @@ export default function TablesPage() {
       const compactItems = menuItems.map((item) => ({
         id: item.id,
         name: item.name,
+        description: String(item.description || "").trim(),
+        category: normalizeMenuCategory(item.category),
         price: Number(item.price) || 0,
       }));
       params.set("items", JSON.stringify(compactItems));
@@ -274,5 +282,4 @@ export default function TablesPage() {
     </div>
   );
 }
-
 

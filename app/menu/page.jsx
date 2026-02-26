@@ -14,10 +14,22 @@ const DEFAULT_PAYMENT_CONFIG = {
 };
 
 const UPI_ID_REGEX = /^[a-zA-Z0-9._-]{2,}@[a-zA-Z0-9.-]{2,}$/;
+const DEFAULT_MENU_CATEGORY = "Main Course";
+const CATEGORY_SORT_PRIORITY = [
+  DEFAULT_MENU_CATEGORY,
+  "Starter",
+  "Dessert",
+  "Beverage",
+];
 
 const toNumber = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const normalizeCategory = (value) => {
+  const category = String(value || "").trim();
+  return category || DEFAULT_MENU_CATEGORY;
 };
 
 const sanitizePaymentConfig = (config) => {
@@ -50,7 +62,7 @@ const parseItemsQuery = (value) => {
         id: item.id || `query-item-${index}`,
         name: String(item.name || "").trim(),
         description: String(item.description || "").trim(),
-        category: String(item.category || "Main Course"),
+        category: normalizeCategory(item.category),
         price: toNumber(item.price),
       }))
       .filter((item) => item.name);
@@ -87,6 +99,7 @@ function CustomerMenuContent() {
     customerName: "",
     customerMobile: "",
   });
+  const [activeCategory, setActiveCategory] = useState("All");
   const [paymentMethod, setPaymentMethod] = useState("UPI");
   const [confirmation, setConfirmation] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -99,6 +112,55 @@ function CustomerMenuContent() {
     [queryMenuItems]
   );
   const menuSource = queryMenuItems.length > 0 ? "query" : "local";
+  const groupedMenuItems = useMemo(() => {
+    const grouped = new Map();
+
+    menuItems.forEach((item) => {
+      const category = normalizeCategory(item.category);
+      if (!grouped.has(category)) {
+        grouped.set(category, []);
+      }
+      grouped.get(category).push({
+        ...item,
+        category,
+        description: String(item.description || "").trim(),
+        price: toNumber(item.price),
+      });
+    });
+
+    return Array.from(grouped.entries())
+      .sort(([first], [second]) => {
+        const firstIndex = CATEGORY_SORT_PRIORITY.indexOf(first);
+        const secondIndex = CATEGORY_SORT_PRIORITY.indexOf(second);
+        const normalizedFirstIndex =
+          firstIndex === -1 ? CATEGORY_SORT_PRIORITY.length : firstIndex;
+        const normalizedSecondIndex =
+          secondIndex === -1 ? CATEGORY_SORT_PRIORITY.length : secondIndex;
+
+        if (normalizedFirstIndex !== normalizedSecondIndex) {
+          return normalizedFirstIndex - normalizedSecondIndex;
+        }
+
+        return first.localeCompare(second);
+      })
+      .map(([category, items]) => ({ category, items }));
+  }, [menuItems]);
+
+  const categoryOptions = useMemo(
+    () => groupedMenuItems.map((group) => group.category),
+    [groupedMenuItems]
+  );
+  const selectedCategory = useMemo(() => {
+    if (activeCategory === "All") return "All";
+    return categoryOptions.includes(activeCategory) ? activeCategory : "All";
+  }, [activeCategory, categoryOptions]);
+
+  const visibleCategoryGroups = useMemo(() => {
+    if (selectedCategory === "All") return groupedMenuItems;
+    return groupedMenuItems.filter(
+      (group) => group.category === selectedCategory
+    );
+  }, [groupedMenuItems, selectedCategory]);
 
   const paymentConfig = useMemo(() => {
     const storedPaymentConfig = sanitizePaymentConfig(getPaymentConfig());
@@ -304,36 +366,59 @@ function CustomerMenuContent() {
                 Menu Items
               </h2>
 
-              {menuItems.length === 0 ? (
+              {groupedMenuItems.length === 0 ? (
                 <p className="text-sm text-gray-500">
                   Menu is empty. Admin can add items from dashboard menu section.
                 </p>
               ) : (
-                <div className="space-y-3">
-                  {menuItems.map((item) => (
-                    <div
-                      key={item.id}
-                      className="flex flex-col gap-3 rounded-lg border p-4 md:flex-row md:items-center md:justify-between"
-                    >
-                      <div>
-                        <p className="font-semibold text-gray-900">{item.name}</p>
-                        <p className="text-sm text-gray-500">
-                          {item.description || "No description"}
-                        </p>
-                        <p className="mt-1 font-bold text-green-600">
-                          Rs. {toNumber(item.price)}
-                        </p>
-                      </div>
+                <div className="space-y-4">
+                  <div className="flex flex-wrap gap-2">
+                    {["All", ...categoryOptions].map((category) => (
                       <button
-                        onClick={() => addToCart(item)}
-                        className={`rounded-lg px-4 py-2 text-sm font-medium text-white ${
-                          recentlyAdded[item.id]
-                            ? "bg-emerald-600"
-                            : "bg-blue-600 hover:bg-blue-700"
+                        key={category}
+                        onClick={() => setActiveCategory(category)}
+                        className={`rounded-full border px-4 py-1.5 text-xs font-semibold ${
+                          selectedCategory === category
+                            ? "border-blue-600 bg-blue-600 text-white"
+                            : "border-gray-300 text-gray-700 hover:bg-gray-50"
                         }`}
                       >
-                        {recentlyAdded[item.id] ? "Added" : "Add to cart"}
+                        {category}
                       </button>
+                    ))}
+                  </div>
+
+                  {visibleCategoryGroups.map((group) => (
+                    <div key={group.category} className="space-y-3">
+                      <h3 className="text-sm font-semibold uppercase tracking-wide text-gray-500">
+                        {group.category}
+                      </h3>
+                      {group.items.map((item) => (
+                        <div
+                          key={item.id}
+                          className="flex flex-col gap-3 rounded-lg border p-4 md:flex-row md:items-center md:justify-between"
+                        >
+                          <div>
+                            <p className="font-semibold text-gray-900">{item.name}</p>
+                            <p className="text-sm text-gray-500">
+                              {item.description || "No description"}
+                            </p>
+                            <p className="mt-1 font-bold text-green-600">
+                              Rs. {toNumber(item.price)}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => addToCart(item)}
+                            className={`rounded-lg px-4 py-2 text-sm font-medium text-white ${
+                              recentlyAdded[item.id]
+                                ? "bg-emerald-600"
+                                : "bg-blue-600 hover:bg-blue-700"
+                            }`}
+                          >
+                            {recentlyAdded[item.id] ? "Added" : "Add to cart"}
+                          </button>
+                        </div>
+                      ))}
                     </div>
                   ))}
                 </div>

@@ -10,6 +10,8 @@ const MENU_BASE_URL_KEY = "restaurantMenuBaseUrl";
 const DEFAULT_MENU_CATEGORY = "Main Course";
 const QR_SAFE_URL_LENGTH = 2600;
 const MENU_NAME_MAX_LENGTH = 36;
+const DASHBOARD_REFRESH_INTERVAL_MS = 5000;
+const MAX_TABLE_NUMBER_DIGITS = 4;
 const CATEGORY_TO_CODE = {
   "Main Course": "m",
   Starter: "s",
@@ -91,6 +93,54 @@ const normalizeTableNumber = (value) => {
   return String(parsed);
 };
 
+const getTableNumberError = (value, tables) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "Table number is required.";
+  if (!/^\d+$/.test(raw)) return "Table number must contain only digits.";
+  if (raw.length > MAX_TABLE_NUMBER_DIGITS) {
+    return `Table number can be maximum ${MAX_TABLE_NUMBER_DIGITS} digits.`;
+  }
+
+  const normalized = normalizeTableNumber(raw);
+  if (!normalized) return "Enter valid table number (example: 1, 2, 10).";
+
+  const exists = (Array.isArray(tables) ? tables : []).some(
+    (table) => normalizeTableNumber(table?.tableNo) === normalized
+  );
+  if (exists) return "Table already exists.";
+
+  return "";
+};
+
+const getBaseUrlError = (value) => {
+  const raw = String(value || "").trim();
+  if (!raw) return "Phone Access URL is required.";
+
+  const normalized = normalizeBaseUrl(raw);
+  if (!normalized) {
+    return "Enter valid URL (example: https://domain.com or http://192.168.1.10:3000).";
+  }
+
+  try {
+    const parsed = new URL(normalized);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      return "URL must start with http:// or https://";
+    }
+  } catch {
+    return "Enter valid URL.";
+  }
+
+  if (isLocalHostUrl(normalized)) {
+    return "localhost URL will not open on other phones. Use LAN IP or deployed domain.";
+  }
+
+  return "";
+};
+
+const areTablesEqual = (left, right) =>
+  JSON.stringify(Array.isArray(left) ? left : []) ===
+  JSON.stringify(Array.isArray(right) ? right : []);
+
 export default function TablesPage() {
   const [tables, setTables] = useState(() => getTables());
   const [tableNo, setTableNo] = useState("");
@@ -102,6 +152,10 @@ export default function TablesPage() {
     );
     const currentOrigin = normalizeBaseUrl(window.location.origin);
     return storedBaseUrl || currentOrigin;
+  });
+  const [formErrors, setFormErrors] = useState({
+    tableNo: "",
+    baseUrl: "",
   });
 
   useEffect(() => {
@@ -116,6 +170,24 @@ export default function TablesPage() {
       localStorage.setItem(MENU_BASE_URL_KEY, normalized);
     }
   }, [baseUrl]);
+
+  useEffect(() => {
+    const syncTablesFromStorage = () => {
+      const latestTables = getTables();
+      setTables((currentTables) =>
+        areTablesEqual(currentTables, latestTables) ? currentTables : latestTables
+      );
+    };
+
+    const intervalId = window.setInterval(
+      syncTablesFromStorage,
+      DASHBOARD_REFRESH_INTERVAL_MS
+    );
+
+    return () => {
+      window.clearInterval(intervalId);
+    };
+  }, []);
 
   const getActiveBaseUrl = () => {
     const browserOrigin =
@@ -165,24 +237,21 @@ export default function TablesPage() {
   };
 
   const addTable = () => {
-    const normalizedTable = normalizeTableNumber(tableNo);
-    if (!normalizedTable) {
-      toast.error("Enter valid numeric table number (example: 1, 2, 10)");
+    const tableNoError = getTableNumberError(tableNo, tables);
+    const baseUrlError = getBaseUrlError(baseUrl);
+    if (tableNoError || baseUrlError) {
+      setFormErrors({
+        tableNo: tableNoError,
+        baseUrl: baseUrlError,
+      });
+      toast.error(tableNoError || baseUrlError);
       return;
     }
 
+    const normalizedTable = normalizeTableNumber(tableNo);
     const activeBaseUrl = getActiveBaseUrl();
     if (!activeBaseUrl || isLocalHostUrl(activeBaseUrl)) {
       toast.error("Set Phone Access URL to LAN IP or deployed domain first");
-      return;
-    }
-
-    if (
-      tables.some(
-        (table) => normalizeTableNumber(table.tableNo) === normalizedTable
-      )
-    ) {
-      toast.error("Table already exists");
       return;
     }
 
@@ -241,10 +310,27 @@ export default function TablesPage() {
               pattern="[0-9]*"
               placeholder="Enter table number (example: 1)"
               value={tableNo}
-              onChange={(e) =>
-                setTableNo(e.target.value.replace(/\D/g, "").slice(0, 4))
+              onChange={(e) => {
+                const nextValue = e.target.value
+                  .replace(/\D/g, "")
+                  .slice(0, MAX_TABLE_NUMBER_DIGITS);
+                setTableNo(nextValue);
+                if (formErrors.tableNo) {
+                  setFormErrors((prev) => ({
+                    ...prev,
+                    tableNo: getTableNumberError(nextValue, tables),
+                  }));
+                }
+              }}
+              onBlur={() =>
+                setFormErrors((prev) => ({
+                  ...prev,
+                  tableNo: getTableNumberError(tableNo, tables),
+                }))
               }
-              className="flex-1 rounded-lg border px-4 py-2"
+              className={`flex-1 rounded-lg border px-4 py-2 ${
+                formErrors.tableNo ? "border-red-500" : ""
+              }`}
             />
             <button
               onClick={addTable}
@@ -253,6 +339,11 @@ export default function TablesPage() {
               Generate QR
             </button>
           </div>
+          {formErrors.tableNo && (
+            <p className="mt-2 text-xs font-medium text-red-600">
+              {formErrors.tableNo}
+            </p>
+          )}
 
           <div className="mt-4 space-y-2">
             <label className="block text-sm font-medium text-gray-700">
@@ -262,17 +353,46 @@ export default function TablesPage() {
               <input
                 type="text"
                 value={baseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
+                onChange={(e) => {
+                  const nextValue = e.target.value;
+                  setBaseUrl(nextValue);
+                  if (formErrors.baseUrl) {
+                    setFormErrors((prev) => ({
+                      ...prev,
+                      baseUrl: getBaseUrlError(nextValue),
+                    }));
+                  }
+                }}
+                onBlur={() =>
+                  setFormErrors((prev) => ({
+                    ...prev,
+                    baseUrl: getBaseUrlError(baseUrl),
+                  }))
+                }
                 placeholder="https://your-domain.com or http://192.168.1.10:3000"
-                className="flex-1 rounded-lg border px-4 py-2 text-sm"
+                className={`flex-1 rounded-lg border px-4 py-2 text-sm ${
+                  formErrors.baseUrl ? "border-red-500" : ""
+                }`}
               />
               <button
-                onClick={() => setBaseUrl(window.location.origin)}
+                onClick={() => {
+                  const currentUrl = window.location.origin;
+                  setBaseUrl(currentUrl);
+                  setFormErrors((prev) => ({
+                    ...prev,
+                    baseUrl: getBaseUrlError(currentUrl),
+                  }));
+                }}
                 className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
               >
                 Use Current URL
               </button>
             </div>
+            {formErrors.baseUrl && (
+              <p className="text-xs font-medium text-red-600">
+                {formErrors.baseUrl}
+              </p>
+            )}
             <p className="text-xs text-gray-500">
               Use your LAN IP or deployed domain. Do not use localhost for
               mobile QR scans.

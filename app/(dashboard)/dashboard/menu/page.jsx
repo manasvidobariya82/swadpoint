@@ -8,6 +8,7 @@ const CATEGORY_FILTERS = ["All", ...MENU_CATEGORIES];
 const MAX_ITEM_NAME_LENGTH = 80;
 const MAX_ITEM_DESCRIPTION_LENGTH = 240;
 const MAX_ITEM_PRICE = 100000;
+const MENU_NAME_ALLOWED_CHARACTERS_REGEX = /^[\p{L}\s.'&()\-]+$/u;
 
 const EMPTY_FORM_ERRORS = {
   name: "",
@@ -25,6 +26,17 @@ const sanitizeText = (value, maxLength) =>
   String(value || "")
     .trim()
     .slice(0, maxLength);
+
+const sanitizeMenuNameInput = (value) =>
+  String(value || "").replace(/\d+/g, "").slice(0, MAX_ITEM_NAME_LENGTH);
+
+const isValidMenuItemName = (value) => {
+  const name = sanitizeText(value, MAX_ITEM_NAME_LENGTH);
+  return (
+    name.length >= 2 &&
+    MENU_NAME_ALLOWED_CHARACTERS_REGEX.test(name)
+  );
+};
 
 const normalizeCategory = (value) => {
   const category = String(value || "").trim();
@@ -75,6 +87,8 @@ const validateMenuForm = ({ form, menuItems, editingId }) => {
 
   if (name.length < 2) {
     errors.name = "Item name must be at least 2 characters.";
+  } else if (!isValidMenuItemName(name)) {
+    errors.name = "Item name can contain letters only (no numbers).";
   }
 
   if (!form.price || !Number.isFinite(price)) {
@@ -322,7 +336,7 @@ export default function AdminMenuPage() {
               value={form.name}
               maxLength={MAX_ITEM_NAME_LENGTH}
               onChange={(e) => {
-                setForm({ ...form, name: e.target.value });
+                setForm({ ...form, name: sanitizeMenuNameInput(e.target.value) });
                 if (formErrors.name) {
                   setFormErrors((prev) => ({ ...prev, name: "" }));
                 }

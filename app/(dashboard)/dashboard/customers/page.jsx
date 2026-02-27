@@ -197,6 +197,25 @@ export default function Page() {
   const totalPages = Math.max(1, Math.ceil(filtered.length / entries));
   const safePage = Math.min(page, totalPages);
   const paginated = filtered.slice((safePage - 1) * entries, safePage * entries);
+  const customerSummary = useMemo(() => {
+    const totalSpent = customers.reduce(
+      (sum, customer) => sum + toNumber(customer.totalSpent),
+      0
+    );
+    const active = customers.filter(
+      (customer) => customer.status === "Active"
+    ).length;
+    const pending = customers.filter(
+      (customer) => customer.status === "Pending"
+    ).length;
+
+    return {
+      total: customers.length,
+      active,
+      pending,
+      totalSpent,
+    };
+  }, [customers]);
 
   const exportCSV = () => {
     const csvEscape = (value) => `"${String(value ?? "").replaceAll('"', '""')}"`;
@@ -248,111 +267,145 @@ export default function Page() {
   };
 
   return (
-    <div className="space-y-6 rounded-xl bg-white p-6 shadow-sm">
-      <div className="flex items-center justify-between border-b pb-4">
-        <h1 className="text-xl font-semibold">Customer Management</h1>
-        <div className="flex gap-3">
-          <button
-            onClick={exportCSV}
-            className="rounded-full border px-4 py-2 text-sm hover:bg-gray-100"
-          >
-            Export
-          </button>
-          <button
-            onClick={loadCustomers}
-            className="rounded-full bg-black px-5 py-2 text-sm text-white"
-          >
-            Sync Orders
-          </button>
+    <div className="space-y-6">
+      <div className="rounded-2xl border bg-white p-5 shadow-sm">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Customer Management</h1>
+            <p className="mt-1 text-sm text-gray-600">
+              Customer insights from live order activity.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={exportCSV}
+              className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium hover:bg-gray-50"
+            >
+              Export CSV
+            </button>
+            <button
+              onClick={loadCustomers}
+              className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white"
+            >
+              Sync Orders
+            </button>
+          </div>
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <input
-          value={search}
-          onChange={(e) => {
-            setSearch(e.target.value);
-            setPage(1);
-          }}
-          placeholder="Search customer..."
-          className="h-11 w-72 rounded-lg border px-4 text-sm outline-none focus:ring-2 focus:ring-black"
-        />
-        <select
-          value={entries}
-          onChange={(e) => {
-            setEntries(Number(e.target.value));
-            setPage(1);
-          }}
-          className="h-11 rounded-lg border px-3 text-sm outline-none focus:ring-2 focus:ring-black"
-        >
-          <option value={10}>10 / page</option>
-          <option value={25}>25 / page</option>
-          <option value={50}>50 / page</option>
-        </select>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-xl border bg-white p-4 shadow-sm">
+          <p className="text-sm text-gray-500">Total Customers</p>
+          <p className="mt-1 text-2xl font-bold text-gray-900">{customerSummary.total}</p>
+        </div>
+        <div className="rounded-xl border bg-white p-4 shadow-sm">
+          <p className="text-sm text-gray-500">Active</p>
+          <p className="mt-1 text-2xl font-bold text-emerald-600">{customerSummary.active}</p>
+        </div>
+        <div className="rounded-xl border bg-white p-4 shadow-sm">
+          <p className="text-sm text-gray-500">Pending</p>
+          <p className="mt-1 text-2xl font-bold text-amber-600">{customerSummary.pending}</p>
+        </div>
+        <div className="rounded-xl border bg-white p-4 shadow-sm">
+          <p className="text-sm text-gray-500">Total Spent</p>
+          <p className="mt-1 text-2xl font-bold text-gray-900">
+            Rs. {customerSummary.totalSpent.toFixed(2)}
+          </p>
+        </div>
       </div>
 
-      <div className="overflow-x-auto">
-        <table className="w-full border-t text-sm">
-          <thead className="border-b bg-gray-50">
-            <tr className="text-left">
-              <th className="py-3">ID</th>
-              <th>Name</th>
-              <th>Mobile</th>
-              <th>Visits</th>
-              <th>Orders</th>
-              <th>Loyalty</th>
-              <th>Food</th>
-              <th>Status</th>
-              <th>Action</th>
-            </tr>
-          </thead>
+      <div className="rounded-2xl border bg-white p-4 shadow-sm">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <input
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              setPage(1);
+            }}
+            placeholder="Search by name, mobile, food, status"
+            className="h-11 w-full rounded-lg border px-4 text-sm outline-none focus:ring-2 focus:ring-black md:max-w-md"
+          />
+          <select
+            value={entries}
+            onChange={(e) => {
+              setEntries(Number(e.target.value));
+              setPage(1);
+            }}
+            className="h-11 rounded-lg border px-3 text-sm outline-none focus:ring-2 focus:ring-black"
+          >
+            <option value={10}>10 / page</option>
+            <option value={25}>25 / page</option>
+            <option value={50}>50 / page</option>
+          </select>
+        </div>
+      </div>
 
-          <tbody>
-            {paginated.length === 0 ? (
-              <tr>
-                <td colSpan={9} className="py-10 text-center text-gray-400">
-                  {isLoading ? "Loading customers..." : "No Customers Found"}
-                </td>
+      <div className="overflow-hidden rounded-2xl border bg-white shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="border-b bg-gray-50">
+              <tr className="text-left text-xs uppercase tracking-wide text-gray-600">
+                <th className="px-4 py-3">ID</th>
+                <th className="px-4 py-3">Customer</th>
+                <th className="px-4 py-3">Mobile</th>
+                <th className="px-4 py-3">Visits</th>
+                <th className="px-4 py-3">Orders</th>
+                <th className="px-4 py-3">Loyalty</th>
+                <th className="px-4 py-3">Favorite Food</th>
+                <th className="px-4 py-3">Status</th>
+                <th className="px-4 py-3 text-right">Action</th>
               </tr>
-            ) : (
-              paginated.map((customer) => (
-                <tr key={customer.id} className="border-b hover:bg-gray-50">
-                  <td className="py-3">{customer.id}</td>
-                  <td>{customer.name}</td>
-                  <td>{customer.mobile}</td>
-                  <td>{customer.visit}</td>
-                  <td>{customer.orders}</td>
-                  <td>{customer.loyalty}</td>
-                  <td>{customer.food}</td>
-                  <td>
-                    <span
-                      className={`rounded-full px-3 py-1 text-xs ${
-                        customer.status === "Pending"
-                          ? "bg-orange-100 text-orange-600"
-                          : "bg-green-100 text-green-600"
-                      }`}
-                    >
-                      {customer.status}
-                    </span>
-                  </td>
-                  <td
-                    onClick={() => {
-                      setSelected(customer);
-                      setIsViewOpen(true);
-                    }}
-                    className="cursor-pointer text-blue-600"
-                  >
-                    View
+            </thead>
+
+            <tbody>
+              {paginated.length === 0 ? (
+                <tr>
+                  <td colSpan={9} className="px-4 py-10 text-center text-gray-400">
+                    {isLoading ? "Loading customers..." : "No customers found"}
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                paginated.map((customer) => (
+                  <tr key={customer.id} className="border-b last:border-b-0 hover:bg-gray-50">
+                    <td className="px-4 py-3">{customer.id}</td>
+                    <td className="px-4 py-3 font-medium text-gray-900">{customer.name}</td>
+                    <td className="px-4 py-3">{customer.mobile}</td>
+                    <td className="px-4 py-3">{customer.visit}</td>
+                    <td className="px-4 py-3">{customer.orders}</td>
+                    <td className="px-4 py-3">{customer.loyalty}</td>
+                    <td className="px-4 py-3">{customer.food}</td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                          customer.status === "Pending"
+                            ? "bg-orange-100 text-orange-600"
+                            : "bg-green-100 text-green-600"
+                        }`}
+                      >
+                        {customer.status}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => {
+                          setSelected(customer);
+                          setIsViewOpen(true);
+                        }}
+                        className="text-sm font-medium text-blue-600 hover:text-blue-800"
+                      >
+                        View
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
-      <div className="flex items-center justify-between text-sm">
-        <span>
+      <div className="flex flex-col gap-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+        <span className="text-gray-600">
           Showing {paginated.length} of {filtered.length}
         </span>
         <div className="flex overflow-hidden rounded-md border">
@@ -375,7 +428,7 @@ export default function Page() {
 
       {isViewOpen && selected && (
         <Modal title="Customer Details" onClose={() => setIsViewOpen(false)}>
-          <div className="space-y-2 text-sm">
+          <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
             <p>
               <b>Name:</b> {selected.name}
             </p>
@@ -402,14 +455,17 @@ export default function Page() {
             </p>
           </div>
 
-          <div className="mt-4">
+          <div className="mt-5">
             <p className="mb-2 text-sm font-semibold">Recent Orders</p>
             {selected.recentOrders.length === 0 ? (
               <p className="text-sm text-gray-500">No recent orders</p>
             ) : (
               <div className="space-y-2">
                 {selected.recentOrders.map((order) => (
-                  <div key={`${order.id}-${order.time}`} className="rounded border p-2 text-xs">
+                  <div
+                    key={`${order.id}-${order.time}`}
+                    className="rounded-lg border p-3 text-xs"
+                  >
                     <p>
                       <b>Order:</b> {order.id}
                     </p>
@@ -438,7 +494,7 @@ export default function Page() {
 
 const Modal = ({ title, children, onClose }) => (
   <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
-    <div className="w-[420px] rounded-xl bg-white p-6">
+    <div className="mx-4 w-full max-w-xl rounded-xl bg-white p-6">
       <h2 className="mb-4 text-lg font-semibold">{title}</h2>
       {children}
       <button onClick={onClose} className="mt-4 w-full rounded border py-2">

@@ -1139,6 +1139,25 @@ import { useEffect, useMemo, useState } from "react";
 import { getBusinessProfile } from "@/helper/businessProfile";
 import { getOrders, saveOrders } from "@/helper/storage";
 const DASHBOARD_REFRESH_INTERVAL_MS = 5000;
+const DISPLAY_LOCALE = "en-IN";
+const DISPLAY_TIMEZONE = "Asia/Kolkata";
+
+const ORDER_DATE_TIME_FORMATTER = new Intl.DateTimeFormat(DISPLAY_LOCALE, {
+  day: "2-digit",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: true,
+  timeZone: DISPLAY_TIMEZONE,
+});
+
+const ORDER_TIME_FORMATTER = new Intl.DateTimeFormat(DISPLAY_LOCALE, {
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: true,
+  timeZone: DISPLAY_TIMEZONE,
+});
 
 // ============================================================================
 // Helper Functions (unchanged except recentOrders now includes items)
@@ -1171,6 +1190,12 @@ const parseTime = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const sanitizeSearchInput = (value) =>
+  String(value || "")
+    .replace(/[^a-zA-Z\s]/g, "")
+    .replace(/\s{2,}/g, " ")
+    .slice(0, 60);
+
 const normalizeId = (value) => String(value || "").trim();
 
 const mergeOrders = (current, incoming) => {
@@ -1199,7 +1224,13 @@ const mergeOrders = (current, incoming) => {
 const formatDateTime = (value) => {
   const parsed = parseTime(value);
   if (!parsed) return "-";
-  return new Date(parsed).toLocaleString();
+  return ORDER_DATE_TIME_FORMATTER.format(new Date(parsed));
+};
+
+const formatTime = (value) => {
+  const parsed = parseTime(value);
+  if (!parsed) return "-";
+  return ORDER_TIME_FORMATTER.format(new Date(parsed));
 };
 
 const getFavoriteFood = (foodCounter) => {
@@ -1427,9 +1458,9 @@ const SearchBar = ({ search, onSearchChange, entries, onEntriesChange }) => (
       <input
         value={search}
         onChange={(e) => {
-          onSearchChange(e.target.value);
+          onSearchChange(sanitizeSearchInput(e.target.value));
         }}
-        placeholder="Search by name, mobile, food, status"
+        placeholder="Search by name, food, status (letters only)"
         className="h-11 w-full rounded-lg border px-4 text-sm outline-none focus:ring-2 focus:ring-black md:max-w-md"
       />
       <select
@@ -1553,7 +1584,7 @@ const CustomerGrid = ({ customers, isLoading, onView }) => {
                     <div className="mt-1 flex justify-between">
                       <span>Rs. {order.total.toFixed(2)}</span>
                       <span className="text-gray-500">
-                        {new Date(order.time).toLocaleTimeString()}
+                        {formatTime(order.time)}
                       </span>
                     </div>
                     {order.items && order.items.length > 0 && (
@@ -1596,16 +1627,29 @@ export default function Page() {
   const [search, setSearch] = useState("");
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [selected, setSelected] = useState(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [lastSyncedAt, setLastSyncedAt] = useState("");
+
+  const handleSyncNow = async () => {
+    if (isSyncing) return;
+
+    setIsSyncing(true);
+    try {
+      await refresh();
+      setLastSyncedAt(formatTime(Date.now()));
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // Filter customers based on search
   const filtered = useMemo(() => {
-    const query = search.trim().toLowerCase();
+    const query = sanitizeSearchInput(search).trim().toLowerCase();
     if (!query) return customers;
 
     return customers.filter(
       (customer) =>
         String(customer.name || "").toLowerCase().includes(query) ||
-        String(customer.mobile || "").includes(search.trim()) ||
         String(customer.food || "").toLowerCase().includes(query) ||
         String(customer.status || "").toLowerCase().includes(query),
     );
@@ -1717,13 +1761,18 @@ export default function Page() {
               Export CSV
             </button>
             <button
-              onClick={refresh}
-              className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white"
+              type="button"
+              onClick={handleSyncNow}
+              disabled={isSyncing}
+              className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
             >
-              Sync Orders
+              {isSyncing ? "Syncing..." : "Sync Now"}
             </button>
           </div>
         </div>
+        {lastSyncedAt && (
+          <p className="mt-2 text-xs text-gray-500">Last synced at: {lastSyncedAt}</p>
+        )}
       </div>
 
       {/* Summary Cards */}
@@ -1733,7 +1782,7 @@ export default function Page() {
       <SearchBar
         search={search}
         onSearchChange={(value) => {
-          setSearch(value);
+          setSearch(sanitizeSearchInput(value));
           setPage(1);
         }}
         entries={entries}

@@ -10,6 +10,13 @@ import { downloadInvoice, printInvoice } from "@/helper/invoice";
 
 const PAYMENTS_CACHE_KEY = "swadpointBillingPaymentsCache";
 const ORDERS_CACHE_KEY = "swadpointBillingOrdersCache";
+const UPI_ID_REGEX = /^[a-zA-Z0-9._-]{2,}@[a-zA-Z0-9.-]{2,}$/;
+const PAYMENT_STATUSES = ["success", "pending", "failed"];
+const STATUS_FILTER_OPTIONS = ["All", ...PAYMENT_STATUSES];
+const PAYMENT_METHODS = ["UPI", "Cash", "Card"];
+const MAX_PAYMENT_AMOUNT = 500000;
+const MAX_PAYEE_NAME_LENGTH = 80;
+const MAX_UPI_ID_LENGTH = 60;
 
 const createUpiUrl = (upiId, payeeName, amount = 1) =>
   `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(
@@ -33,12 +40,67 @@ const toNumber = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const normalizeText = (value, maxLength = 120) =>
+  String(value || "")
+    .trim()
+    .slice(0, maxLength);
+
 const toTimestamp = (value) => {
   const parsed = new Date(value).getTime();
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
 const normalizeId = (value) => String(value || "").trim();
+const isValidUpiId = (value) => UPI_ID_REGEX.test(normalizeText(value, MAX_UPI_ID_LENGTH));
+const normalizeDate = (value) => {
+  const timestamp = toTimestamp(value);
+  return timestamp ? new Date(timestamp).toISOString() : new Date().toISOString();
+};
+
+const sanitizePaymentRecord = (payment, index = 0) => {
+  if (!payment || typeof payment !== "object") return null;
+
+  const id = normalizeText(payment.id, 64) || `pay-${Date.now()}-${index}`;
+  const statusRaw = normalizeText(payment.status, 20).toLowerCase();
+  const status = PAYMENT_STATUSES.includes(statusRaw) ? statusRaw : "pending";
+  const methodRaw = normalizeText(payment.paymentMethod, 20);
+  const paymentMethod = PAYMENT_METHODS.includes(methodRaw) ? methodRaw : "UPI";
+  const amount = Math.max(0, Math.min(MAX_PAYMENT_AMOUNT, toNumber(payment.amount)));
+
+  return {
+    ...payment,
+    id,
+    orderId: normalizeText(payment.orderId, 64),
+    customerName: normalizeText(payment.customerName, 80) || "Walk-in",
+    customerMobile: normalizeText(payment.customerMobile, 20) || "-",
+    tableNo: normalizeText(payment.tableNo, 20) || "NA",
+    paymentMethod,
+    status,
+    amount,
+    timestamp: normalizeDate(payment.timestamp),
+  };
+};
+
+const sanitizeOrderRecord = (order) => {
+  if (!order || typeof order !== "object") return null;
+
+  const id = normalizeText(order.id, 64);
+  if (!id) return null;
+
+  return {
+    ...order,
+    id,
+    customerName: normalizeText(order.customerName, 80) || "Walk-in",
+    customerMobile: normalizeText(order.customerMobile, 20) || "-",
+    tableNo: normalizeText(order.tableNo, 20) || "NA",
+    paymentMethod: normalizeText(order.paymentMethod, 20) || "UPI",
+    paymentStatus: normalizeText(order.paymentStatus, 20) || "Paid",
+    status: normalizeText(order.status, 20) || "Pending",
+    time: normalizeDate(order.time),
+    total: Math.max(0, Math.min(MAX_PAYMENT_AMOUNT, toNumber(order.total))),
+    items: Array.isArray(order.items) ? order.items : [],
+  };
+};
 
 const readCachedArray = (key) => {
   if (typeof window === "undefined") return [];
@@ -47,7 +109,9 @@ const readCachedArray = (key) => {
     const raw = localStorage.getItem(key);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    return (Array.isArray(parsed) ? parsed : [])
+      .map((payment, index) => sanitizePaymentRecord(payment, index))
+      .filter(Boolean);
   } catch {
     return [];
   }
@@ -60,7 +124,15 @@ const readCachedObject = (key) => {
     const raw = localStorage.getItem(key);
     if (!raw) return {};
     const parsed = JSON.parse(raw);
-    return parsed && typeof parsed === "object" ? parsed : {};
+    if (!parsed || typeof parsed !== "object") return {};
+
+    return Object.values(parsed).reduce((acc, order) => {
+      const sanitized = sanitizeOrderRecord(order);
+      if (sanitized?.id) {
+        acc[sanitized.id] = sanitized;
+      }
+      return acc;
+    }, {});
   } catch {
     return {};
   }
@@ -70,17 +142,19 @@ const mergePayments = (current, incoming) => {
   const mergedById = new Map();
 
   (Array.isArray(current) ? current : []).forEach((payment) => {
-    const id = normalizeId(payment?.id);
+    const sanitized = sanitizePaymentRecord(payment);
+    const id = normalizeId(sanitized?.id);
     if (!id) return;
-    mergedById.set(id, payment);
+    mergedById.set(id, sanitized);
   });
 
-  (Array.isArray(incoming) ? incoming : []).forEach((payment) => {
-    const id = normalizeId(payment?.id);
+  (Array.isArray(incoming) ? incoming : []).forEach((payment, index) => {
+    const sanitized = sanitizePaymentRecord(payment, index);
+    const id = normalizeId(sanitized?.id);
     if (!id) return;
     mergedById.set(id, {
       ...(mergedById.get(id) || {}),
-      ...payment,
+      ...sanitized,
     });
   });
 
@@ -93,11 +167,12 @@ const mergeOrdersLookup = (currentLookup, incomingOrders) => {
   const nextLookup = { ...(currentLookup || {}) };
 
   (Array.isArray(incomingOrders) ? incomingOrders : []).forEach((order) => {
-    const id = normalizeId(order?.id);
+    const sanitized = sanitizeOrderRecord(order);
+    const id = normalizeId(sanitized?.id);
     if (!id) return;
     nextLookup[id] = {
       ...(nextLookup[id] || {}),
-      ...order,
+      ...sanitized,
     };
   });
 
@@ -160,6 +235,10 @@ export default function BillingPage() {
   const [statusFilter, setStatusFilter] = useState("All");
   const [isLoading, setIsLoading] = useState(true);
   const [lastSyncedAt, setLastSyncedAt] = useState("");
+  const [configErrors, setConfigErrors] = useState({
+    upiId: "",
+    payeeName: "",
+  });
 
   const loadData = async () => {
     const [paymentsResult, ordersResult] = await Promise.allSettled([
@@ -207,6 +286,7 @@ export default function BillingPage() {
   }, [ordersById]);
 
   const filteredPayments = useMemo(() => {
+    if (!STATUS_FILTER_OPTIONS.includes(statusFilter)) return payments;
     if (statusFilter === "All") return payments;
     return payments.filter((payment) => payment.status === statusFilter);
   }, [payments, statusFilter]);
@@ -231,22 +311,36 @@ export default function BillingPage() {
   }, [payments]);
 
   const saveConfig = () => {
-    const upiId = paymentConfig.upiId.trim();
-    const payeeName = paymentConfig.payeeName.trim();
+    const upiId = normalizeText(paymentConfig.upiId, MAX_UPI_ID_LENGTH);
+    const payeeName = normalizeText(paymentConfig.payeeName, MAX_PAYEE_NAME_LENGTH);
+    const errors = {
+      upiId: "",
+      payeeName: "",
+    };
 
-    if (!upiId || !payeeName) {
-      alert("Please fill UPI ID and payee name.");
+    if (!isValidUpiId(upiId)) {
+      errors.upiId = "Enter valid UPI ID (example: swadpoint@upi)";
+    }
+    if (payeeName.length < 2) {
+      errors.payeeName = "Payee name must be at least 2 characters.";
+    }
+
+    if (errors.upiId || errors.payeeName) {
+      setConfigErrors(errors);
       return;
     }
+    setConfigErrors({ upiId: "", payeeName: "" });
 
     savePaymentConfig({ upiId, payeeName });
     alert("Payment QR config saved.");
   };
 
-  const paymentQrUrl = useMemo(
-    () => createUpiUrl(paymentConfig.upiId, paymentConfig.payeeName, 1),
-    [paymentConfig]
-  );
+  const paymentQrUrl = useMemo(() => {
+    const upiId = normalizeText(paymentConfig.upiId, MAX_UPI_ID_LENGTH);
+    const payeeName = normalizeText(paymentConfig.payeeName, MAX_PAYEE_NAME_LENGTH);
+    if (!isValidUpiId(upiId) || payeeName.length < 2) return "upi://pay";
+    return createUpiUrl(upiId, payeeName, 1);
+  }, [paymentConfig]);
 
   return (
     <div className="min-h-screen bg-gray-100 p-6">
@@ -268,24 +362,41 @@ export default function BillingPage() {
               <input
                 type="text"
                 value={paymentConfig.upiId}
-                onChange={(e) =>
-                  setPaymentConfig((prev) => ({ ...prev, upiId: e.target.value }))
-                }
+                maxLength={MAX_UPI_ID_LENGTH}
+                onChange={(e) => {
+                  const nextValue = e.target.value.replace(/\s+/g, "");
+                  setPaymentConfig((prev) => ({ ...prev, upiId: nextValue }));
+                  if (configErrors.upiId) {
+                    setConfigErrors((prev) => ({ ...prev, upiId: "" }));
+                  }
+                }}
                 className="rounded-lg border px-3 py-2"
                 placeholder="UPI ID (example: swadpoint@upi)"
               />
               <input
                 type="text"
                 value={paymentConfig.payeeName}
-                onChange={(e) =>
+                maxLength={MAX_PAYEE_NAME_LENGTH}
+                onChange={(e) => {
                   setPaymentConfig((prev) => ({
                     ...prev,
                     payeeName: e.target.value,
-                  }))
-                }
+                  }));
+                  if (configErrors.payeeName) {
+                    setConfigErrors((prev) => ({ ...prev, payeeName: "" }));
+                  }
+                }}
                 className="rounded-lg border px-3 py-2"
                 placeholder="Payee name"
               />
+              {configErrors.upiId && (
+                <p className="-mt-1 text-xs font-medium text-red-600">{configErrors.upiId}</p>
+              )}
+              {configErrors.payeeName && (
+                <p className="-mt-1 text-xs font-medium text-red-600">
+                  {configErrors.payeeName}
+                </p>
+              )}
             </div>
             <button
               onClick={saveConfig}
@@ -353,7 +464,12 @@ export default function BillingPage() {
               </button>
               <select
                 value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value)}
+                onChange={(e) => {
+                  const nextValue = e.target.value;
+                  if (STATUS_FILTER_OPTIONS.includes(nextValue)) {
+                    setStatusFilter(nextValue);
+                  }
+                }}
                 className="rounded-lg border px-3 py-2 text-sm"
               >
                 <option value="All">All</option>
@@ -433,7 +549,7 @@ export default function BillingPage() {
                         </span>
                       </td>
                       <td className="px-3 py-2 text-gray-700">
-                        {new Date(payment.timestamp).toLocaleString()}
+                        {new Date(normalizeDate(payment.timestamp)).toLocaleString()}
                       </td>
                       <td className="px-3 py-2">
                         <div className="flex gap-2">

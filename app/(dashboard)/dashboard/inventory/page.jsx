@@ -4,6 +4,10 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { Edit3, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 
 const INVENTORY_STORAGE_KEY = "restaurantInventory";
+const MAX_STOCK_VALUE = 999999;
+const MAX_PRICE_PER_UNIT = 100000;
+const MAX_TEXT_LENGTH = 80;
+const ALLOWED_UNITS = ["kg", "gm", "ltr", "ml", "pcs", "pack", "bottle"];
 
 const EMPTY_FORM = {
   name: "",
@@ -20,7 +24,21 @@ const toNumber = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const normalizeText = (value) => String(value || "").trim();
+const normalizeText = (value, maxLength = MAX_TEXT_LENGTH) =>
+  String(value || "")
+    .trim()
+    .slice(0, maxLength);
+
+const normalizeUnit = (value) => {
+  const normalized = normalizeText(value, 12).toLowerCase();
+  return ALLOWED_UNITS.includes(normalized) ? normalized : "kg";
+};
+
+const normalizeWholeNumber = (value, max = MAX_STOCK_VALUE) =>
+  Math.max(0, Math.min(max, Math.floor(toNumber(value))));
+
+const normalizeAmount = (value, max = MAX_PRICE_PER_UNIT) =>
+  Math.max(0, Math.min(max, toNumber(value)));
 
 const normalizeInventoryItem = (item, index = 0) => {
   const source = item && typeof item === "object" ? item : {};
@@ -29,12 +47,93 @@ const normalizeInventoryItem = (item, index = 0) => {
     id: normalizeText(source.id) || `inv-${Date.now()}-${index}`,
     name: normalizeText(source.name),
     category: normalizeText(source.category),
-    currentStock: Math.max(0, toNumber(source.currentStock)),
-    minStock: Math.max(0, toNumber(source.minStock)),
-    unit: normalizeText(source.unit) || "kg",
-    pricePerUnit: Math.max(0, toNumber(source.pricePerUnit)),
+    currentStock: normalizeWholeNumber(source.currentStock),
+    minStock: normalizeWholeNumber(source.minStock),
+    unit: normalizeUnit(source.unit),
+    pricePerUnit: normalizeAmount(source.pricePerUnit),
     supplier: normalizeText(source.supplier),
     lastUpdated: source.lastUpdated || new Date().toISOString(),
+  };
+};
+
+const EMPTY_FORM_ERRORS = {
+  name: "",
+  category: "",
+  currentStock: "",
+  minStock: "",
+  unit: "",
+  pricePerUnit: "",
+  supplier: "",
+};
+
+const validateInventoryForm = ({ form, inventory, editingId }) => {
+  const errors = { ...EMPTY_FORM_ERRORS };
+
+  const name = normalizeText(form.name);
+  const category = normalizeText(form.category);
+  const supplier = normalizeText(form.supplier);
+  const unit = normalizeUnit(form.unit);
+  const currentStockRaw = form.currentStock;
+  const minStockRaw = form.minStock;
+  const priceRaw = form.pricePerUnit;
+
+  const currentStock = normalizeWholeNumber(currentStockRaw);
+  const minStock = normalizeWholeNumber(minStockRaw);
+  const pricePerUnit = normalizeAmount(priceRaw);
+
+  if (name.length < 2) {
+    errors.name = "Name must be at least 2 characters.";
+  }
+
+  if (category.length < 2) {
+    errors.category = "Category must be at least 2 characters.";
+  }
+
+  if (currentStockRaw === "" || !/^\d+(\.\d+)?$/.test(String(currentStockRaw))) {
+    errors.currentStock = "Enter valid current stock.";
+  }
+
+  if (minStockRaw === "" || !/^\d+(\.\d+)?$/.test(String(minStockRaw))) {
+    errors.minStock = "Enter valid minimum stock.";
+  }
+
+  if (priceRaw && !/^\d+(\.\d{1,2})?$/.test(String(priceRaw))) {
+    errors.pricePerUnit = "Price must be numeric (up to 2 decimals).";
+  }
+
+  if (!ALLOWED_UNITS.includes(unit)) {
+    errors.unit = `Allowed units: ${ALLOWED_UNITS.join(", ")}`;
+  }
+
+  if (supplier.length > MAX_TEXT_LENGTH) {
+    errors.supplier = `Supplier name max ${MAX_TEXT_LENGTH} characters.`;
+  }
+
+  const candidateKey = `${name.toLowerCase()}|${category.toLowerCase()}`;
+  const duplicateExists = (Array.isArray(inventory) ? inventory : []).some(
+    (item) =>
+      item.id !== editingId &&
+      `${normalizeText(item.name).toLowerCase()}|${normalizeText(
+        item.category
+      ).toLowerCase()}` === candidateKey
+  );
+  if (name && category && duplicateExists) {
+    errors.name = "Same item already exists in this category.";
+  }
+
+  return {
+    isValid: !Object.values(errors).some(Boolean),
+    errors,
+    payload: {
+      name,
+      category,
+      supplier,
+      unit,
+      currentStock,
+      minStock,
+      pricePerUnit,
+      lastUpdated: new Date().toISOString(),
+    },
   };
 };
 
@@ -118,6 +217,7 @@ export default function InventoryPage() {
   const [categoryFilter, setCategoryFilter] = useState("All");
   const [statusFilter, setStatusFilter] = useState("All");
   const [form, setForm] = useState(EMPTY_FORM);
+  const [formErrors, setFormErrors] = useState(EMPTY_FORM_ERRORS);
   const [editingId, setEditingId] = useState(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -191,45 +291,21 @@ export default function InventoryPage() {
 
   const resetForm = () => {
     setForm(EMPTY_FORM);
+    setFormErrors(EMPTY_FORM_ERRORS);
     setEditingId(null);
   };
 
-  const buildPayloadFromForm = () => {
-    const name = form.name.trim();
-    const category = form.category.trim();
-    const supplier = form.supplier.trim();
-    const currentStock = Number(form.currentStock);
-    const minStock = Number(form.minStock);
-    const pricePerUnit = Number(form.pricePerUnit);
-    const unit = String(form.unit || "kg").trim() || "kg";
-
-    if (
-      !name ||
-      !category ||
-      Number.isNaN(currentStock) ||
-      Number.isNaN(minStock)
-    ) {
-      return null;
-    }
-
-    return {
-      name,
-      category,
-      supplier,
-      unit,
-      currentStock: Math.max(0, currentStock),
-      minStock: Math.max(0, minStock),
-      pricePerUnit: Number.isNaN(pricePerUnit) ? 0 : Math.max(0, pricePerUnit),
-      lastUpdated: new Date().toISOString(),
-    };
-  };
-
   const handleSubmit = async () => {
-    const payload = buildPayloadFromForm();
-    if (!payload) {
-      alert("Please enter valid name, category, current stock, and min stock.");
+    const { isValid, errors, payload } = validateInventoryForm({
+      form,
+      inventory,
+      editingId,
+    });
+    if (!isValid) {
+      setFormErrors(errors);
       return;
     }
+    setFormErrors(EMPTY_FORM_ERRORS);
 
     try {
       setIsSaving(true);
@@ -272,6 +348,7 @@ export default function InventoryPage() {
       pricePerUnit: String(item.pricePerUnit),
       supplier: item.supplier,
     });
+    setFormErrors(EMPTY_FORM_ERRORS);
   };
 
   const removeItem = async (id) => {
@@ -292,8 +369,12 @@ export default function InventoryPage() {
   const adjustStock = async (id, delta) => {
     const currentItem = inventory.find((item) => item.id === id);
     if (!currentItem) return;
+    if (!Number.isInteger(delta) || Math.abs(delta) > 1000) return;
 
-    const nextStock = Math.max(0, currentItem.currentStock + delta);
+    const nextStock = Math.max(
+      0,
+      Math.min(MAX_STOCK_VALUE, currentItem.currentStock + delta)
+    );
     const payload = {
       ...currentItem,
       currentStock: nextStock,
@@ -365,6 +446,7 @@ export default function InventoryPage() {
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <input
               value={query}
+              maxLength={60}
               onChange={(e) => setQuery(e.target.value)}
               placeholder="Search name, category, supplier"
               className="w-full rounded-lg border py-2 pl-9 pr-3 text-sm"
@@ -372,7 +454,12 @@ export default function InventoryPage() {
           </div>
           <select
             value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
+            onChange={(e) => {
+              const nextValue = e.target.value;
+              if (categories.includes(nextValue)) {
+                setCategoryFilter(nextValue);
+              }
+            }}
             className="rounded-lg border px-3 py-2 text-sm"
           >
             {categories.map((category) => (
@@ -383,7 +470,12 @@ export default function InventoryPage() {
           </select>
           <select
             value={statusFilter}
-            onChange={(e) => setStatusFilter(e.target.value)}
+            onChange={(e) => {
+              const nextValue = e.target.value;
+              if (["All", "Good", "Low", "Out"].includes(nextValue)) {
+                setStatusFilter(nextValue);
+              }
+            }}
             className="rounded-lg border px-3 py-2 text-sm"
           >
             <option value="All">All Status</option>
@@ -399,64 +491,165 @@ export default function InventoryPage() {
           {editingId ? "Edit Item" : "Add Item"}
         </h2>
         <div className="mt-3 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <input
-            value={form.name}
-            onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
-            placeholder="Item name"
-            className="rounded-lg border px-3 py-2 text-sm"
-          />
-          <input
-            value={form.category}
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, category: e.target.value }))
-            }
-            placeholder="Category"
-            className="rounded-lg border px-3 py-2 text-sm"
-          />
-          <input
-            value={form.currentStock}
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, currentStock: e.target.value }))
-            }
-            placeholder="Current stock"
-            type="number"
-            min="0"
-            className="rounded-lg border px-3 py-2 text-sm"
-          />
-          <input
-            value={form.minStock}
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, minStock: e.target.value }))
-            }
-            placeholder="Minimum stock"
-            type="number"
-            min="0"
-            className="rounded-lg border px-3 py-2 text-sm"
-          />
-          <input
-            value={form.pricePerUnit}
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, pricePerUnit: e.target.value }))
-            }
-            placeholder="Price per unit"
-            type="number"
-            min="0"
-            className="rounded-lg border px-3 py-2 text-sm"
-          />
-          <input
-            value={form.supplier}
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, supplier: e.target.value }))
-            }
-            placeholder="Supplier"
-            className="rounded-lg border px-3 py-2 text-sm"
-          />
-          <input
-            value={form.unit}
-            onChange={(e) => setForm((prev) => ({ ...prev, unit: e.target.value }))}
-            placeholder="Unit (kg, ltr, pcs)"
-            className="rounded-lg border px-3 py-2 text-sm"
-          />
+          <div>
+            <input
+              value={form.name}
+              maxLength={MAX_TEXT_LENGTH}
+              onChange={(e) => {
+                setForm((prev) => ({ ...prev, name: e.target.value }));
+                if (formErrors.name) {
+                  setFormErrors((prev) => ({ ...prev, name: "" }));
+                }
+              }}
+              placeholder="Item name"
+              className={`w-full rounded-lg border px-3 py-2 text-sm ${
+                formErrors.name ? "border-red-500" : ""
+              }`}
+            />
+            {formErrors.name && (
+              <p className="mt-1 text-xs font-medium text-red-600">{formErrors.name}</p>
+            )}
+          </div>
+          <div>
+            <input
+              value={form.category}
+              maxLength={MAX_TEXT_LENGTH}
+              onChange={(e) => {
+                setForm((prev) => ({ ...prev, category: e.target.value }));
+                if (formErrors.category) {
+                  setFormErrors((prev) => ({ ...prev, category: "" }));
+                }
+              }}
+              placeholder="Category"
+              className={`w-full rounded-lg border px-3 py-2 text-sm ${
+                formErrors.category ? "border-red-500" : ""
+              }`}
+            />
+            {formErrors.category && (
+              <p className="mt-1 text-xs font-medium text-red-600">{formErrors.category}</p>
+            )}
+          </div>
+          <div>
+            <input
+              value={form.currentStock}
+              onChange={(e) => {
+                const nextValue = e.target.value;
+                if (nextValue === "" || /^\d{0,6}$/.test(nextValue)) {
+                  setForm((prev) => ({ ...prev, currentStock: nextValue }));
+                  if (formErrors.currentStock) {
+                    setFormErrors((prev) => ({ ...prev, currentStock: "" }));
+                  }
+                }
+              }}
+              placeholder="Current stock"
+              type="number"
+              min="0"
+              max={MAX_STOCK_VALUE}
+              className={`w-full rounded-lg border px-3 py-2 text-sm ${
+                formErrors.currentStock ? "border-red-500" : ""
+              }`}
+            />
+            {formErrors.currentStock && (
+              <p className="mt-1 text-xs font-medium text-red-600">
+                {formErrors.currentStock}
+              </p>
+            )}
+          </div>
+          <div>
+            <input
+              value={form.minStock}
+              onChange={(e) => {
+                const nextValue = e.target.value;
+                if (nextValue === "" || /^\d{0,6}$/.test(nextValue)) {
+                  setForm((prev) => ({ ...prev, minStock: nextValue }));
+                  if (formErrors.minStock) {
+                    setFormErrors((prev) => ({ ...prev, minStock: "" }));
+                  }
+                }
+              }}
+              placeholder="Minimum stock"
+              type="number"
+              min="0"
+              max={MAX_STOCK_VALUE}
+              className={`w-full rounded-lg border px-3 py-2 text-sm ${
+                formErrors.minStock ? "border-red-500" : ""
+              }`}
+            />
+            {formErrors.minStock && (
+              <p className="mt-1 text-xs font-medium text-red-600">{formErrors.minStock}</p>
+            )}
+          </div>
+          <div>
+            <input
+              value={form.pricePerUnit}
+              onChange={(e) => {
+                const nextValue = e.target.value;
+                if (nextValue === "" || /^\d{0,6}(\.\d{0,2})?$/.test(nextValue)) {
+                  setForm((prev) => ({ ...prev, pricePerUnit: nextValue }));
+                  if (formErrors.pricePerUnit) {
+                    setFormErrors((prev) => ({ ...prev, pricePerUnit: "" }));
+                  }
+                }
+              }}
+              placeholder="Price per unit"
+              type="number"
+              min="0"
+              max={MAX_PRICE_PER_UNIT}
+              step="0.01"
+              className={`w-full rounded-lg border px-3 py-2 text-sm ${
+                formErrors.pricePerUnit ? "border-red-500" : ""
+              }`}
+            />
+            {formErrors.pricePerUnit && (
+              <p className="mt-1 text-xs font-medium text-red-600">
+                {formErrors.pricePerUnit}
+              </p>
+            )}
+          </div>
+          <div>
+            <input
+              value={form.supplier}
+              maxLength={MAX_TEXT_LENGTH}
+              onChange={(e) => {
+                setForm((prev) => ({ ...prev, supplier: e.target.value }));
+                if (formErrors.supplier) {
+                  setFormErrors((prev) => ({ ...prev, supplier: "" }));
+                }
+              }}
+              placeholder="Supplier"
+              className={`w-full rounded-lg border px-3 py-2 text-sm ${
+                formErrors.supplier ? "border-red-500" : ""
+              }`}
+            />
+            {formErrors.supplier && (
+              <p className="mt-1 text-xs font-medium text-red-600">{formErrors.supplier}</p>
+            )}
+          </div>
+          <div>
+            <input
+              value={form.unit}
+              list="inventory-units"
+              maxLength={12}
+              onChange={(e) => {
+                setForm((prev) => ({ ...prev, unit: e.target.value.toLowerCase() }));
+                if (formErrors.unit) {
+                  setFormErrors((prev) => ({ ...prev, unit: "" }));
+                }
+              }}
+              placeholder="Unit (kg, ltr, pcs)"
+              className={`w-full rounded-lg border px-3 py-2 text-sm ${
+                formErrors.unit ? "border-red-500" : ""
+              }`}
+            />
+            <datalist id="inventory-units">
+              {ALLOWED_UNITS.map((unitOption) => (
+                <option key={unitOption} value={unitOption} />
+              ))}
+            </datalist>
+            {formErrors.unit && (
+              <p className="mt-1 text-xs font-medium text-red-600">{formErrors.unit}</p>
+            )}
+          </div>
           <div className="flex gap-2">
             <button
               onClick={() => void handleSubmit()}

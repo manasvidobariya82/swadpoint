@@ -17,6 +17,21 @@ import { Toaster, toast } from "react-hot-toast";
 import { getPaymentConfig, savePaymentConfig } from "@/helper/storage";
 
 const SETTINGS_STORAGE_KEY = "swadpointProductSettings";
+const UPI_ID_REGEX = /^[a-zA-Z0-9._-]{2,}@[a-zA-Z0-9.-]{2,}$/;
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const PHONE_REGEX = /^\+?[0-9][0-9\s-]{7,14}$/;
+const TIME_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+const clampNumber = (value, min, max) => {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return min;
+  return Math.max(min, Math.min(max, parsed));
+};
+
+const sanitizeText = (value, maxLength = 120) =>
+  String(value || "")
+    .trim()
+    .slice(0, maxLength);
 
 const createDefaultSettings = () => {
   const paymentConfig = getPaymentConfig();
@@ -90,8 +105,100 @@ const readSavedSettings = () => {
   }
 };
 
+const sanitizeSettings = (candidate) => {
+  const defaults = createDefaultSettings();
+  const source = candidate && typeof candidate === "object" ? candidate : {};
+  const merged = {
+    restaurant: { ...defaults.restaurant, ...(source.restaurant || {}) },
+    ordering: { ...defaults.ordering, ...(source.ordering || {}) },
+    qr: { ...defaults.qr, ...(source.qr || {}) },
+    payments: { ...defaults.payments, ...(source.payments || {}) },
+    notifications: { ...defaults.notifications, ...(source.notifications || {}) },
+    access: { ...defaults.access, ...(source.access || {}) },
+  };
+
+  return {
+    restaurant: {
+      brandName: sanitizeText(merged.restaurant.brandName, 80),
+      branchName: sanitizeText(merged.restaurant.branchName, 80),
+      supportPhone: sanitizeText(merged.restaurant.supportPhone, 18),
+      supportEmail: sanitizeText(merged.restaurant.supportEmail, 120),
+      city: sanitizeText(merged.restaurant.city, 60),
+      gstNumber: sanitizeText(merged.restaurant.gstNumber, 20),
+      currency: "INR",
+    },
+    ordering: {
+      autoAcceptOrders: Boolean(merged.ordering.autoAcceptOrders),
+      defaultPrepMinutes: clampNumber(merged.ordering.defaultPrepMinutes, 1, 240),
+      allowWalkInWithoutPhone: Boolean(merged.ordering.allowWalkInWithoutPhone),
+      splitBillEnabled: Boolean(merged.ordering.splitBillEnabled),
+      orderReadyDisplay: Boolean(merged.ordering.orderReadyDisplay),
+    },
+    qr: {
+      requireRegisteredTable: Boolean(merged.qr.requireRegisteredTable),
+      manualTableEntry: Boolean(merged.qr.manualTableEntry),
+      showTableLabelToCustomer: Boolean(merged.qr.showTableLabelToCustomer),
+      useLiveMenuInQr: Boolean(merged.qr.useLiveMenuInQr),
+    },
+    payments: {
+      enableUpi: Boolean(merged.payments.enableUpi),
+      enableCash: Boolean(merged.payments.enableCash),
+      taxPercent: clampNumber(merged.payments.taxPercent, 0, 28),
+      serviceChargePercent: clampNumber(merged.payments.serviceChargePercent, 0, 50),
+      upiId: sanitizeText(merged.payments.upiId, 60),
+      payeeName: sanitizeText(merged.payments.payeeName, 80),
+    },
+    notifications: {
+      lowStockAlerts: Boolean(merged.notifications.lowStockAlerts),
+      newOrderSound: Boolean(merged.notifications.newOrderSound),
+      paymentFailureAlerts: Boolean(merged.notifications.paymentFailureAlerts),
+      dailySummaryMail: Boolean(merged.notifications.dailySummaryMail),
+      dailySummaryTime: sanitizeText(merged.notifications.dailySummaryTime, 5),
+    },
+    access: {
+      managerCanEditMenu: Boolean(merged.access.managerCanEditMenu),
+      cashierCanRefund: Boolean(merged.access.cashierCanRefund),
+      staffCanCloseOrder: Boolean(merged.access.staffCanCloseOrder),
+      requirePinForRefund: Boolean(merged.access.requirePinForRefund),
+    },
+  };
+};
+
+const validateSettings = (settings) => {
+  if (settings.restaurant.brandName.length < 2) {
+    return "Brand name must be at least 2 characters.";
+  }
+  if (settings.restaurant.branchName.length < 2) {
+    return "Branch name must be at least 2 characters.";
+  }
+  if (!PHONE_REGEX.test(settings.restaurant.supportPhone)) {
+    return "Support phone format is invalid.";
+  }
+  if (!EMAIL_REGEX.test(settings.restaurant.supportEmail)) {
+    return "Support email format is invalid.";
+  }
+  if (settings.restaurant.city.length < 2) {
+    return "City must be at least 2 characters.";
+  }
+  if (!settings.payments.enableUpi && !settings.payments.enableCash) {
+    return "Enable at least one payment method (UPI or Cash).";
+  }
+  if (settings.payments.enableUpi && !UPI_ID_REGEX.test(settings.payments.upiId)) {
+    return "UPI ID format is invalid.";
+  }
+  if (settings.payments.enableUpi && settings.payments.payeeName.length < 2) {
+    return "Payee name must be at least 2 characters.";
+  }
+  if (!TIME_REGEX.test(settings.notifications.dailySummaryTime)) {
+    return "Daily summary time must be in HH:MM format.";
+  }
+  return "";
+};
+
 export default function ProductSettingsPage() {
-  const [settings, setSettings] = useState(() => readSavedSettings());
+  const [settings, setSettings] = useState(() =>
+    sanitizeSettings(readSavedSettings())
+  );
   const [isSaving, setIsSaving] = useState(false);
 
   const paymentMethodsEnabled = useMemo(() => {
@@ -102,28 +209,40 @@ export default function ProductSettingsPage() {
   }, [settings.payments.enableCash, settings.payments.enableUpi]);
 
   const updateField = (section, field, value) => {
-    setSettings((prev) => ({
-      ...prev,
-      [section]: {
-        ...prev[section],
-        [field]: value,
-      },
-    }));
+    setSettings((prev) => {
+      const next = {
+        ...prev,
+        [section]: {
+          ...prev[section],
+          [field]: value,
+        },
+      };
+
+      return sanitizeSettings(next);
+    });
   };
 
   const saveAllSettings = async () => {
+    const normalized = sanitizeSettings(settings);
+    const validationError = validateSettings(normalized);
+    if (validationError) {
+      toast.error(validationError);
+      return;
+    }
+
     setIsSaving(true);
 
     try {
       if (typeof window !== "undefined") {
-        localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(settings));
+        localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(normalized));
       }
 
       savePaymentConfig({
-        upiId: settings.payments.upiId,
-        payeeName: settings.payments.payeeName,
+        upiId: normalized.payments.upiId,
+        payeeName: normalized.payments.payeeName,
       });
 
+      setSettings(normalized);
       await new Promise((resolve) => setTimeout(resolve, 400));
       toast.success("Settings saved successfully");
     } catch {
@@ -134,7 +253,7 @@ export default function ProductSettingsPage() {
   };
 
   const resetDefaults = () => {
-    setSettings(createDefaultSettings());
+    setSettings(sanitizeSettings(createDefaultSettings()));
     toast.success("Default settings restored");
   };
 

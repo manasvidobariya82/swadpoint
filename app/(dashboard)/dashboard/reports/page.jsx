@@ -253,6 +253,38 @@ const INITIAL_REALTIME_STATS = {
 };
 
 const INITIAL_REALTIME_DATA = ANALYSIS_DATA.realTimeMetrics.slice(-6);
+const TIME_RANGE_VALUES = new Set(TIME_RANGES.map((range) => range.value));
+const ANALYSIS_TYPE_VALUES = new Set(ANALYSIS_TYPES.map((type) => type.id));
+const CHART_TYPE_OPTIONS = ["line", "bar", "pie", "doughnut", "radar"];
+const DATA_GRANULARITY_OPTIONS = [
+  "hourly",
+  "daily",
+  "weekly",
+  "monthly",
+  "quarterly",
+];
+const COMPARISON_MODE_OPTIONS = [
+  "none",
+  "previous",
+  "yoy",
+  "target",
+  "competitor",
+];
+const EXPORT_FORMAT_OPTIONS = ["pdf", "excel", "csv", "png", "json"];
+const DATE_INPUT_REGEX = /^\d{4}-\d{2}-\d{2}$/;
+const MAX_SEARCH_LENGTH = 40;
+
+const sanitizeSearchValue = (value) =>
+  String(value || "")
+    .replace(/[^\p{L}\p{N}\s-]/gu, "")
+    .trim()
+    .slice(0, MAX_SEARCH_LENGTH);
+
+const isValidDateValue = (value) => {
+  if (!DATE_INPUT_REGEX.test(String(value || ""))) return false;
+  const parsed = new Date(`${value}T00:00:00`);
+  return Number.isFinite(parsed.getTime());
+};
 
 export default function AdvancedAnalysisBoard() {
   // State Management
@@ -269,6 +301,8 @@ export default function AdvancedAnalysisBoard() {
   const [showCustomDate, setShowCustomDate] = useState(false);
   const [expandedCards, setExpandedCards] = useState([]);
   const [chartType, setChartType] = useState("line");
+  const [dataGranularity, setDataGranularity] = useState("daily");
+  const [comparisonMode, setComparisonMode] = useState("none");
   const [loading, setLoading] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
@@ -384,7 +418,13 @@ export default function AdvancedAnalysisBoard() {
 
   // Handle date range change
   const handleRangeChange = (range) => {
+    if (!TIME_RANGE_VALUES.has(range)) return;
+
     setSelectedRange(range);
+    setShowCustomDate(range === "custom");
+    if (range !== "realtime") {
+      setAutoRefresh(false);
+    }
 
     if (range === "realtime") {
       setAutoRefresh(true);
@@ -392,8 +432,82 @@ export default function AdvancedAnalysisBoard() {
     }
   };
 
+  const handleDateRangeChange = (field, value) => {
+    if (!["start", "end"].includes(field)) return;
+    if (!isValidDateValue(value)) return;
+
+    setDateRange((prev) => {
+      const next = { ...prev, [field]: value };
+      if (isValidDateValue(next.start) && isValidDateValue(next.end)) {
+        const startTime = new Date(`${next.start}T00:00:00`).getTime();
+        const endTime = new Date(`${next.end}T00:00:00`).getTime();
+        if (startTime > endTime) {
+          toast.error("Start date must be before end date.");
+          return prev;
+        }
+      }
+
+      return next;
+    });
+  };
+
+  const handleAnalysisChange = (analysisId) => {
+    if (!ANALYSIS_TYPE_VALUES.has(analysisId)) return;
+    setSelectedAnalysis(analysisId);
+  };
+
+  const handleSearchChange = (value) => {
+    setSearchQuery(sanitizeSearchValue(value));
+  };
+
+  const handleViewModeChange = (mode) => {
+    if (!["grid", "list"].includes(mode)) return;
+    setViewMode(mode);
+  };
+
+  const handleChartTypeChange = (value) => {
+    if (!CHART_TYPE_OPTIONS.includes(value)) return;
+    setChartType(value);
+  };
+
+  const handleDataGranularityChange = (value) => {
+    if (!DATA_GRANULARITY_OPTIONS.includes(value)) return;
+    setDataGranularity(value);
+    toast(`Granularity set to ${value}`, { icon: "📊" });
+  };
+
+  const handleComparisonModeChange = (value) => {
+    if (!COMPARISON_MODE_OPTIONS.includes(value)) return;
+    setComparisonMode(value);
+    toast(`Comparing with ${value}`, { icon: "📈" });
+  };
+
+  const handleApplyFilters = () => {
+    if (showCustomDate) {
+      if (!isValidDateValue(dateRange.start) || !isValidDateValue(dateRange.end)) {
+        toast.error("Please select valid start and end date.");
+        return;
+      }
+      const startTime = new Date(`${dateRange.start}T00:00:00`).getTime();
+      const endTime = new Date(`${dateRange.end}T00:00:00`).getTime();
+      if (startTime > endTime) {
+        toast.error("Start date must be before end date.");
+        return;
+      }
+    }
+
+    setShowFilters(false);
+    toast.success("Filters applied successfully!", { icon: "✅" });
+  };
+
   // Handle export
   const handleExport = (format) => {
+    if (!EXPORT_FORMAT_OPTIONS.includes(format)) {
+      toast.error("Invalid export format selected.");
+      return;
+    }
+    if (isExporting) return;
+
     setIsExporting(true);
     toast.promise(
       new Promise((resolve) => {
@@ -1593,7 +1707,8 @@ export default function AdvancedAnalysisBoard() {
               type="text"
               placeholder="Search analysis..."
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              maxLength={MAX_SEARCH_LENGTH}
+              onChange={(e) => handleSearchChange(e.target.value)}
               className={`pl-10 pr-4 py-2 rounded-lg border ${
                 darkMode
                   ? "bg-gray-700 border-gray-600 text-white placeholder-gray-400"
@@ -1605,7 +1720,7 @@ export default function AdvancedAnalysisBoard() {
           {/* View mode toggle */}
           <div className="flex items-center gap-1 p-1 rounded-lg bg-gray-100 dark:bg-gray-700">
             <button
-              onClick={() => setViewMode("grid")}
+              onClick={() => handleViewModeChange("grid")}
               className={`p-2 rounded ${
                 viewMode === "grid" ? "bg-white dark:bg-gray-600" : ""
               }`}
@@ -1635,7 +1750,7 @@ export default function AdvancedAnalysisBoard() {
               </div>
             </button>
             <button
-              onClick={() => setViewMode("list")}
+              onClick={() => handleViewModeChange("list")}
               className={`p-2 rounded ${
                 viewMode === "list" ? "bg-white dark:bg-gray-600" : ""
               }`}
@@ -1685,7 +1800,7 @@ export default function AdvancedAnalysisBoard() {
           {ANALYSIS_TYPES.map((type) => (
             <button
               key={type.id}
-              onClick={() => setSelectedAnalysis(type.id)}
+              onClick={() => handleAnalysisChange(type.id)}
               className={`px-4 py-3 rounded-lg flex items-center gap-2 transition-all ${
                 selectedAnalysis === type.id
                   ? ANALYSIS_TYPE_ACTIVE_CLASS[type.id] ||
@@ -1749,9 +1864,7 @@ export default function AdvancedAnalysisBoard() {
               <input
                 type="date"
                 value={dateRange.start}
-                onChange={(e) =>
-                  setDateRange({ ...dateRange, start: e.target.value })
-                }
+                onChange={(e) => handleDateRangeChange("start", e.target.value)}
                 className={`px-3 py-2 rounded-lg border ${
                   darkMode
                     ? "bg-gray-700 border-gray-600 text-white"
@@ -1768,9 +1881,7 @@ export default function AdvancedAnalysisBoard() {
               <input
                 type="date"
                 value={dateRange.end}
-                onChange={(e) =>
-                  setDateRange({ ...dateRange, end: e.target.value })
-                }
+                onChange={(e) => handleDateRangeChange("end", e.target.value)}
                 className={`px-3 py-2 rounded-lg border ${
                   darkMode
                     ? "bg-gray-700 border-gray-600 text-white"
@@ -1813,7 +1924,7 @@ export default function AdvancedAnalysisBoard() {
               </label>
               <select
                 value={chartType}
-                onChange={(e) => setChartType(e.target.value)}
+                onChange={(e) => handleChartTypeChange(e.target.value)}
                 className={`w-full rounded-lg px-3 py-2 ${
                   darkMode
                     ? "bg-gray-700 border-gray-600 text-white"
@@ -1842,11 +1953,8 @@ export default function AdvancedAnalysisBoard() {
                     ? "bg-gray-700 border-gray-600 text-white"
                     : "bg-white border-gray-300"
                 }`}
-                onChange={(e) =>
-                  toast(`Granularity set to ${e.target.value}`, {
-                    icon: "📊",
-                  })
-                }
+                value={dataGranularity}
+                onChange={(e) => handleDataGranularityChange(e.target.value)}
               >
                 <option value="hourly">Hourly</option>
                 <option value="daily">Daily</option>
@@ -1870,11 +1978,8 @@ export default function AdvancedAnalysisBoard() {
                     ? "bg-gray-700 border-gray-600 text-white"
                     : "bg-white border-gray-300"
                 }`}
-                onChange={(e) =>
-                  toast(`Comparing with ${e.target.value}`, {
-                    icon: "📈",
-                  })
-                }
+                value={comparisonMode}
+                onChange={(e) => handleComparisonModeChange(e.target.value)}
               >
                 <option value="none">No Comparison</option>
                 <option value="previous">Previous Period</option>
@@ -1887,12 +1992,7 @@ export default function AdvancedAnalysisBoard() {
 
           <div className="mt-4 flex justify-end">
             <button
-              onClick={() => {
-                setShowFilters(false);
-                toast.success("Filters applied successfully!", {
-                  icon: "✅",
-                });
-              }}
+              onClick={handleApplyFilters}
               className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
             >
               Apply Filters
@@ -2241,3 +2341,5 @@ export default function AdvancedAnalysisBoard() {
     </div>
   );
 }
+
+

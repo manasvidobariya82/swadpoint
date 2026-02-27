@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { downloadInvoice, printInvoice } from "@/helper/invoice";
 import { getOrders, saveOrders } from "@/helper/storage";
 
-const ORDER_STATUSES = ["Pending", "Preparing", "Completed", "Cancelled"];
 const PAYMENT_METHODS = ["UPI", "Cash", "Card"];
 const PAYMENT_STATUSES = ["Paid", "Pending", "Unpaid", "Failed"];
 const DASHBOARD_REFRESH_INTERVAL_MS = 5000;
@@ -64,8 +63,14 @@ const normalizeMobile = (value) => {
   return /^\d{10}$/.test(digits) ? digits : "-";
 };
 
-const normalizeOrderStatus = (value) =>
-  ORDER_STATUSES.includes(value) ? value : "Pending";
+const normalizeOrderStatus = (value) => {
+  const status = normalizeText(value, 20).toLowerCase();
+  if (status === "completed") return "Completed";
+  if (status === "preparing") return "Preparing";
+  if (status === "cancelled") return "Cancelled";
+  if (status === "pending") return "Pending";
+  return "Pending";
+};
 
 const normalizePaymentMethod = (value) =>
   PAYMENT_METHODS.includes(value) ? value : "UPI";
@@ -128,7 +133,7 @@ const sanitizeOrder = (order) => {
     tableNo: normalizeText(order.tableNo, 20) || "NA",
     customerName: normalizeText(order.customerName, 80) || "Walk-in",
     customerMobile: normalizeMobile(order.customerMobile || order.mobile || order.phone),
-    status: normalizeOrderStatus(normalizeText(order.status, 20)),
+    status: normalizeOrderStatus(order.status),
     paymentMethod: normalizePaymentMethod(normalizeText(order.paymentMethod, 20)),
     paymentStatus: normalizePaymentStatus(normalizeText(order.paymentStatus, 20) || "Pending"),
     paymentId: normalizeText(order.paymentId, 64) || "-",
@@ -309,7 +314,11 @@ export default function OrdersPage() {
     if (!normalizedId) return;
 
     const targetOrder = orders.find((order) => order.id === normalizedId);
-    if (!targetOrder || targetOrder.status !== "Pending") return;
+    if (!targetOrder) return;
+    if (targetOrder.status === "Preparing") return;
+    if (targetOrder.status === "Completed" || targetOrder.status === "Cancelled") {
+      return;
+    }
 
     try {
       setActionLoadingId(normalizedId);
@@ -328,7 +337,10 @@ export default function OrdersPage() {
     if (!normalizedId) return;
 
     const targetOrder = orders.find((order) => order.id === normalizedId);
-    if (!targetOrder || targetOrder.status !== "Preparing") return;
+    if (!targetOrder) return;
+    if (targetOrder.status === "Completed" || targetOrder.status === "Cancelled") {
+      return;
+    }
 
     try {
       setActionLoadingId(normalizedId);

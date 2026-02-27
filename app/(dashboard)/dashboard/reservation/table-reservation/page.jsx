@@ -39,6 +39,14 @@ const getStatusClassName = (status) => {
 const DEFAULT_RESERVATIONS = [];
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const TIME_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
+const RESERVATION_NAME_REGEX = /^[\p{L}\s.'-]+$/u;
+
+const sanitizeReservationName = (value) =>
+  String(value || "")
+    .replace(/[0-9]/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trimStart()
+    .slice(0, 60);
 
 const validateDateString = (value) => {
   const dateString = String(value || "").trim();
@@ -84,6 +92,9 @@ const validateReservationForm = (form) => {
   const notes = String(form.notes || "").trim();
 
   if (!name || name.length < 2) return "Enter valid full name";
+  if (!RESERVATION_NAME_REGEX.test(name)) {
+    return "Name can contain letters only (no numbers)";
+  }
   if (!/^\d{10}$/.test(mobile)) return "Mobile number must be 10 digits";
   if (email && !EMAIL_REGEX.test(email)) return "Enter valid email address";
 
@@ -194,7 +205,7 @@ export default function TableReservationPage() {
 
     const normalizedForm = {
       ...form,
-      name: String(form.name || "").trim(),
+      name: sanitizeReservationName(form.name).trim(),
       mobile: String(form.mobile || "").replace(/\D/g, "").slice(0, 10),
       email: String(form.email || "").trim(),
       date: String(form.date || "").trim(),
@@ -901,7 +912,10 @@ export default function TableReservationPage() {
                       placeholder="John Smith"
                       value={form.name}
                       onChange={(e) =>
-                        setForm({ ...form, name: e.target.value })
+                        setForm({
+                          ...form,
+                          name: sanitizeReservationName(e.target.value),
+                        })
                       }
                       maxLength={60}
                       className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"

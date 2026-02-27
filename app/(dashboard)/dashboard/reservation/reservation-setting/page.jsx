@@ -34,6 +34,20 @@ import {
   Sparkles,
 } from "lucide-react";
 
+const SPECIAL_EVENT_NAME_REGEX = /^[\p{L}\s.'&()\-]+$/u;
+
+const sanitizeSpecialDateName = (value) =>
+  String(value || "")
+    .replace(/[0-9]/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trimStart()
+    .slice(0, 80);
+
+const isValidSpecialDateName = (value) => {
+  const name = String(value || "").trim();
+  return name.length >= 2 && SPECIAL_EVENT_NAME_REGEX.test(name);
+};
+
 export default function ReservationSettings() {
   // Main state for all settings
   const [settings, setSettings] = useState({
@@ -181,6 +195,7 @@ export default function ReservationSettings() {
     type: "event",
     closed: false,
   });
+  const [specialDateNameError, setSpecialDateNameError] = useState("");
   const [showStats, setShowStats] = useState(true);
   const [loading, setLoading] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -289,16 +304,23 @@ export default function ReservationSettings() {
 
   // Special date functions
   const addSpecialDate = () => {
-    if (!newSpecialDate.date || !newSpecialDate.name) return;
+    const normalizedEventName = sanitizeSpecialDateName(newSpecialDate.name).trim();
+    if (!newSpecialDate.date) return;
+    if (!isValidSpecialDateName(normalizedEventName)) {
+      setSpecialDateNameError("Event name can contain letters only (min 2 chars).");
+      return;
+    }
 
     const date = {
       id: Date.now().toString(),
       ...newSpecialDate,
+      name: normalizedEventName,
       specialHours: [],
     };
 
     setSpecialDates([...specialDates, date]);
     setNewSpecialDate({ date: "", name: "", type: "event", closed: false });
+    setSpecialDateNameError("");
   };
 
   const deleteSpecialDate = (id) => {
@@ -423,7 +445,7 @@ export default function ReservationSettings() {
                 )}
               </h1>
               <p className="text-gray-600 mt-2">
-                Configure your restaurant's reservation preferences and layout
+                Configure your restaurant&apos;s reservation preferences and layout
               </p>
             </div>
             <button
@@ -795,7 +817,7 @@ export default function ReservationSettings() {
                       Time Slot Management
                     </h2>
                     <p className="text-gray-600">
-                      Configure your restaurant's operating hours and capacity
+                      Configure your restaurant&apos;s operating hours and capacity
                     </p>
                   </div>
 
@@ -1416,14 +1438,22 @@ export default function ReservationSettings() {
                           type="text"
                           value={newSpecialDate.name}
                           onChange={(e) =>
-                            setNewSpecialDate({
-                              ...newSpecialDate,
-                              name: e.target.value,
-                            })
+                            {
+                              setNewSpecialDate({
+                                ...newSpecialDate,
+                                name: sanitizeSpecialDateName(e.target.value),
+                              });
+                              if (specialDateNameError) setSpecialDateNameError("");
+                            }
                           }
                           className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-orange-500 focus:border-transparent"
                           placeholder="e.g., Christmas Day"
                         />
+                        {specialDateNameError && (
+                          <p className="mt-1 text-xs font-medium text-red-600">
+                            {specialDateNameError}
+                          </p>
+                        )}
                       </div>
                       <div>
                         <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -1454,7 +1484,8 @@ export default function ReservationSettings() {
                         <button
                           onClick={addSpecialDate}
                           disabled={
-                            !newSpecialDate.date || !newSpecialDate.name
+                            !newSpecialDate.date ||
+                            !isValidSpecialDateName(newSpecialDate.name)
                           }
                           className="w-full px-4 py-3 bg-gradient-to-r from-orange-600 to-amber-600 text-white rounded-xl hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
                         >

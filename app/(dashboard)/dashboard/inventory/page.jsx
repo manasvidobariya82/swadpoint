@@ -8,6 +8,7 @@ const MAX_STOCK_VALUE = 999999;
 const MAX_PRICE_PER_UNIT = 100000;
 const MAX_TEXT_LENGTH = 80;
 const ALLOWED_UNITS = ["kg", "gm", "ltr", "ml", "pcs", "pack", "bottle"];
+const DASHBOARD_REFRESH_INTERVAL_MS = 5000;
 
 const EMPTY_FORM = {
   name: "",
@@ -241,7 +242,7 @@ export default function InventoryPage() {
     }, 0);
     const intervalId = window.setInterval(() => {
       void loadInventory();
-    }, 15000);
+    }, DASHBOARD_REFRESH_INTERVAL_MS);
 
     return () => {
       window.clearTimeout(timeoutId);
@@ -751,3 +752,4 @@ export default function InventoryPage() {
     </div>
   );
 }
+

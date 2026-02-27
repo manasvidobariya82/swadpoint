@@ -1138,6 +1138,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { getBusinessProfile } from "@/helper/businessProfile";
 import { getOrders, saveOrders } from "@/helper/storage";
+const DASHBOARD_REFRESH_INTERVAL_MS = 5000;
 
 // ============================================================================
 // Helper Functions (unchanged except recentOrders now includes items)
@@ -1332,7 +1333,10 @@ const useCustomers = () => {
     const timeoutId = window.setTimeout(() => {
       loadCustomers();
     }, 0);
-    const intervalId = window.setInterval(loadCustomers, 10000);
+    const intervalId = window.setInterval(
+      loadCustomers,
+      DASHBOARD_REFRESH_INTERVAL_MS,
+    );
 
     return () => {
       window.clearTimeout(timeoutId);

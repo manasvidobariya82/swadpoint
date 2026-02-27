@@ -7,6 +7,7 @@ import { getOrders, saveOrders } from "@/helper/storage";
 const ORDER_STATUSES = ["Pending", "Preparing", "Completed", "Cancelled"];
 const PAYMENT_METHODS = ["UPI", "Cash", "Card"];
 const PAYMENT_STATUSES = ["Paid", "Pending", "Unpaid", "Failed"];
+const DASHBOARD_REFRESH_INTERVAL_MS = 5000;
 
 const fetchOrdersFromApi = async () => {
   const response = await fetch("/api/orders", { cache: "no-store" });
@@ -260,7 +261,7 @@ export default function OrdersPage() {
     const timeoutId = window.setTimeout(() => {
       loadOrders();
     }, 0);
-    const intervalId = window.setInterval(loadOrders, 10000);
+    const intervalId = window.setInterval(loadOrders, DASHBOARD_REFRESH_INTERVAL_MS);
     return () => {
       window.clearTimeout(timeoutId);
       window.clearInterval(intervalId);

@@ -110,6 +110,8 @@ ChartJS.register(
   RadialLinearScale
 );
 
+const DASHBOARD_REFRESH_INTERVAL_MS = 5000;
+
 // Enhanced Sample Data
 const ANALYSIS_DATA = {
   // Time-series data
@@ -406,7 +408,7 @@ export default function AdvancedAnalysisBoard() {
       intervalRef.current = setInterval(() => {
         updateRealTimeStats();
         simulateNewData();
-      }, 3000);
+      }, DASHBOARD_REFRESH_INTERVAL_MS);
     }
 
     return () => {
@@ -2258,7 +2260,7 @@ export default function AdvancedAnalysisBoard() {
           }`}
         >
           <p>
-            Analysis Board v2.0 • Data updates every 3 seconds • Last refresh:{" "}
+            Analysis Board v2.0 | Data updates every 5 seconds | Last refresh:{" "}
             {new Date().toLocaleTimeString()}
           </p>
           <p className="mt-1">
@@ -2341,5 +2343,6 @@ export default function AdvancedAnalysisBoard() {
     </div>
   );
 }
+
 
 

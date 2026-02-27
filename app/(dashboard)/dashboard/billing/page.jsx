@@ -17,6 +17,7 @@ const PAYMENT_METHODS = ["UPI", "Cash", "Card"];
 const MAX_PAYMENT_AMOUNT = 500000;
 const MAX_PAYEE_NAME_LENGTH = 80;
 const MAX_UPI_ID_LENGTH = 60;
+const DASHBOARD_REFRESH_INTERVAL_MS = 5000;
 
 const createUpiUrl = (upiId, payeeName, amount = 1) =>
   `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(
@@ -269,7 +270,7 @@ export default function BillingPage() {
     const timeoutId = window.setTimeout(() => {
       loadData();
     }, 0);
-    const intervalId = window.setInterval(loadData, 10000);
+    const intervalId = window.setInterval(loadData, DASHBOARD_REFRESH_INTERVAL_MS);
 
     return () => {
       window.clearTimeout(timeoutId);
@@ -585,3 +586,4 @@ export default function BillingPage() {
     </div>
   );
 }
+

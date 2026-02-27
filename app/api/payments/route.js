@@ -90,6 +90,16 @@ export async function POST(request) {
       );
     }
 
+    const existingPayments = await getPaymentsFromStore();
+    const duplicate = (Array.isArray(existingPayments) ? existingPayments : []).find(
+      (existingPayment) =>
+        existingPayment?.id === payment.id ||
+        (payment.orderId && existingPayment?.orderId === payment.orderId)
+    );
+    if (duplicate) {
+      return NextResponse.json(duplicate);
+    }
+
     const saved = await addPaymentToStore(payment);
     return NextResponse.json(saved, { status: 201 });
   } catch {

@@ -473,7 +473,6 @@ function CustomerMenuContent() {
 
     const now = new Date();
     const orderId = `ORD-${now.getTime()}`;
-    const paymentId = `PAY-${now.getTime()}`;
 
     const normalizedItems = cart
       .map((item) => {
@@ -505,33 +504,20 @@ function CustomerMenuContent() {
       items: normalizedItems,
       total: finalTotal,
       status: "Pending",
-      paymentStatus: "Paid",
+      paymentStatus: "Pending",
       paymentMethod,
-      paymentId,
+      paymentId: "-",
       time: now.toISOString(),
-    };
-
-    const payment = {
-      id: paymentId,
-      orderId,
-      customerName: order.customerName,
-      customerMobile: order.customerMobile,
-      tableNo,
-      amount: finalTotal,
-      paymentMethod,
-      status: "success",
-      timestamp: now.toISOString(),
-      transactionId: `${paymentMethod.toUpperCase()}-${now.getTime()}`,
-      items: normalizedItems.map((item) => `${item.name} x${item.qty}`),
-      upiId: paymentConfig.upiId,
+      invoiceId: "",
+      invoiceGeneratedAt: "",
+      completedAt: "",
+      paymentTransferred: false,
+      paymentTransferredAt: "",
     };
 
     try {
       setIsSubmitting(true);
-      await Promise.all([
-        postJson("/api/orders", order),
-        postJson("/api/payments", payment),
-      ]);
+      await postJson("/api/orders", order);
     } catch {
       alert("Could not submit order. Please check internet/server and retry.");
       setIsSubmitting(false);
@@ -540,7 +526,6 @@ function CustomerMenuContent() {
 
     setConfirmation({
       orderId,
-      paymentId,
       amount: finalTotal,
     });
     setCart([]);
@@ -768,7 +753,7 @@ function CustomerMenuContent() {
                 disabled={isSubmitting}
                 className="mt-5 w-full rounded-lg bg-green-600 px-4 py-2 font-semibold text-white hover:bg-green-700"
               >
-                {isSubmitting ? "Placing order..." : "Place order and pay"}
+                {isSubmitting ? "Placing order..." : "Place order"}
               </button>
             </div>
 
@@ -781,7 +766,7 @@ function CustomerMenuContent() {
                   Order ID: {confirmation.orderId}
                 </p>
                 <p className="text-xs text-green-700">
-                  Payment ID: {confirmation.paymentId}
+                  Payment will be processed after order completion.
                 </p>
                 <p className="text-xs text-green-700">
                   Amount: Rs. {confirmation.amount.toFixed(2)}

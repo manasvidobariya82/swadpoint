@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { downloadInvoice, printInvoice } from "@/helper/invoice";
 import { getOrders, saveOrders } from "@/helper/storage";
 
-const ORDER_STATUSES = ["Pending", "Completed", "Cancelled"];
+const ORDER_STATUSES = ["Pending", "Preparing", "Completed", "Cancelled"];
 const PAYMENT_METHODS = ["UPI", "Cash", "Card"];
 const PAYMENT_STATUSES = ["Paid", "Pending", "Unpaid", "Failed"];
 
@@ -14,13 +14,29 @@ const fetchOrdersFromApi = async () => {
   return response.json();
 };
 
-const updateOrderStatus = async (id, status) => {
+const updateOrder = async (id, payload) => {
   const response = await fetch("/api/orders", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ id, status }),
+    body: JSON.stringify({ id, ...(payload || {}) }),
   });
   if (!response.ok) throw new Error("Failed to update order");
+  return response.json();
+};
+
+const fetchPaymentsFromApi = async () => {
+  const response = await fetch("/api/payments", { cache: "no-store" });
+  if (!response.ok) throw new Error("Failed to fetch payments");
+  return response.json();
+};
+
+const createPaymentFromOrder = async (payload) => {
+  const response = await fetch("/api/payments", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error("Failed to create payment");
   return response.json();
 };
 
@@ -53,7 +69,7 @@ const normalizePaymentMethod = (value) =>
   PAYMENT_METHODS.includes(value) ? value : "UPI";
 
 const normalizePaymentStatus = (value) =>
-  PAYMENT_STATUSES.includes(value) ? value : "Paid";
+  PAYMENT_STATUSES.includes(value) ? value : "Pending";
 
 const formatDateTime = (value) => {
   const timestamp = toTimestamp(value);
@@ -105,9 +121,20 @@ const sanitizeOrder = (order) => {
     customerMobile: normalizeMobile(order.customerMobile || order.mobile || order.phone),
     status: normalizeOrderStatus(normalizeText(order.status, 20)),
     paymentMethod: normalizePaymentMethod(normalizeText(order.paymentMethod, 20)),
-    paymentStatus: normalizePaymentStatus(normalizeText(order.paymentStatus, 20)),
+    paymentStatus: normalizePaymentStatus(normalizeText(order.paymentStatus, 20) || "Pending"),
     paymentId: normalizeText(order.paymentId, 64) || "-",
     time: toTimestamp(order.time) ? new Date(order.time).toISOString() : new Date().toISOString(),
+    invoiceId: normalizeText(order.invoiceId, 64),
+    invoiceGeneratedAt: toTimestamp(order.invoiceGeneratedAt)
+      ? new Date(order.invoiceGeneratedAt).toISOString()
+      : "",
+    completedAt: toTimestamp(order.completedAt)
+      ? new Date(order.completedAt).toISOString()
+      : "",
+    paymentTransferred: Boolean(order.paymentTransferred),
+    paymentTransferredAt: toTimestamp(order.paymentTransferredAt)
+      ? new Date(order.paymentTransferredAt).toISOString()
+      : "",
     items,
     total,
   };
@@ -146,13 +173,19 @@ const buildInvoiceFromOrder = (order) => {
     0
   );
   const totalAmount = toNumber(normalizedOrder?.total || totalFromItems);
-  const invoiceId = `INV-${String(normalizedOrder?.id || Date.now()).replace(/[^\w-]/g, "")}`;
+  const invoiceId =
+    normalizeText(normalizedOrder?.invoiceId, 64) ||
+    `INV-${String(normalizedOrder?.id || Date.now()).replace(/[^\w-]/g, "")}`;
 
   return {
     invoiceId,
     orderId: normalizedOrder?.id || "-",
     paymentId: normalizedOrder?.paymentId || "-",
-    issuedAt: normalizedOrder?.time || new Date().toISOString(),
+    issuedAt:
+      normalizedOrder?.invoiceGeneratedAt ||
+      normalizedOrder?.completedAt ||
+      normalizedOrder?.time ||
+      new Date().toISOString(),
     tableNo: normalizedOrder?.tableNo || "NA",
     customerName: normalizedOrder?.customerName || "Walk-in",
     customerMobile: normalizedOrder?.customerMobile || "-",
@@ -174,10 +207,36 @@ const buildInvoiceFromOrder = (order) => {
   };
 };
 
+const buildPaymentPayloadFromOrder = (order, invoice) => {
+  const normalizedOrder = sanitizeOrder(order) || {};
+  const paymentId =
+    normalizeText(normalizedOrder.paymentId, 64) && normalizedOrder.paymentId !== "-"
+      ? normalizedOrder.paymentId
+      : `PAY-${normalizedOrder.id}`;
+
+  return {
+    id: paymentId,
+    orderId: normalizedOrder.id,
+    customerName: normalizedOrder.customerName || "Walk-in",
+    customerMobile: normalizedOrder.customerMobile || "-",
+    tableNo: normalizedOrder.tableNo || "NA",
+    amount: toNumber(normalizedOrder.total),
+    paymentMethod: normalizedOrder.paymentMethod || "UPI",
+    status: "success",
+    timestamp: new Date().toISOString(),
+    transactionId: `${(normalizedOrder.paymentMethod || "UPI").toUpperCase()}-${normalizedOrder.id}`,
+    items: (Array.isArray(normalizedOrder.items) ? normalizedOrder.items : []).map(
+      (item) => `${item.name || "Item"} x${Math.max(1, toNumber(item.qty || 1))}`
+    ),
+    invoiceId: normalizeText(invoice?.invoiceId, 64),
+  };
+};
+
 export default function OrdersPage() {
   const [orders, setOrders] = useState(() => mergeOrders([], getOrders()));
   const [loading, setLoading] = useState(true);
   const [actionLoadingId, setActionLoadingId] = useState("");
+  const [isSyncing, setIsSyncing] = useState(false);
 
   const loadOrders = async () => {
     try {
@@ -216,6 +275,43 @@ export default function OrdersPage() {
     () => orders.filter((order) => order.status === "Pending").length,
     [orders]
   );
+  const preparingCount = useMemo(
+    () => orders.filter((order) => order.status === "Preparing").length,
+    [orders]
+  );
+  const completedCount = useMemo(
+    () => orders.filter((order) => order.status === "Completed").length,
+    [orders]
+  );
+
+  const handleSyncNow = async () => {
+    if (isSyncing) return;
+    setIsSyncing(true);
+    try {
+      await loadOrders();
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const markPreparing = async (id) => {
+    if (actionLoadingId) return;
+    const normalizedId = normalizeId(id);
+    if (!normalizedId) return;
+
+    const targetOrder = orders.find((order) => order.id === normalizedId);
+    if (!targetOrder || targetOrder.status !== "Pending") return;
+
+    try {
+      setActionLoadingId(normalizedId);
+      await updateOrder(normalizedId, { status: "Preparing" });
+      await loadOrders();
+    } catch {
+      alert("Could not update order status. Please retry.");
+    } finally {
+      setActionLoadingId("");
+    }
+  };
 
   const markCompleted = async (id) => {
     if (actionLoadingId) return;
@@ -223,18 +319,79 @@ export default function OrdersPage() {
     if (!normalizedId) return;
 
     const targetOrder = orders.find((order) => order.id === normalizedId);
-    if (!targetOrder || targetOrder.status === "Completed") return;
+    if (
+      !targetOrder ||
+      targetOrder.status === "Completed" ||
+      targetOrder.status === "Cancelled"
+    )
+      return;
 
     try {
       setActionLoadingId(normalizedId);
-      await updateOrderStatus(normalizedId, "Completed");
+      const completedAt = new Date().toISOString();
+      const completedOrder = sanitizeOrder(
+        await updateOrder(normalizedId, {
+          status: "Completed",
+          paymentStatus: "Paid",
+          completedAt,
+        })
+      );
+
+      if (completedOrder) {
+        const invoice = buildInvoiceFromOrder(completedOrder);
+        const existingPayments = await fetchPaymentsFromApi();
+        const existingPayment = (Array.isArray(existingPayments) ? existingPayments : []).find(
+          (payment) =>
+            normalizeId(payment?.orderId) === completedOrder.id ||
+            (normalizeId(completedOrder.paymentId) &&
+              completedOrder.paymentId !== "-" &&
+              normalizeId(payment?.id) === completedOrder.paymentId)
+        );
+
+        const nowIso = new Date().toISOString();
+        const paymentPayload = buildPaymentPayloadFromOrder(completedOrder, invoice);
+
+        if (!existingPayment) {
+          const createdPayment = await createPaymentFromOrder(paymentPayload);
+          await updateOrder(completedOrder.id, {
+            paymentId: normalizeId(createdPayment?.id) || paymentPayload.id,
+            paymentStatus: "Paid",
+            paymentTransferred: true,
+            paymentTransferredAt: nowIso,
+            invoiceId: invoice.invoiceId,
+            invoiceGeneratedAt: nowIso,
+          });
+        } else {
+          const patchPayload = {};
+          const existingPaymentId = normalizeId(existingPayment.id);
+          if (!completedOrder.paymentId || completedOrder.paymentId === "-") {
+            patchPayload.paymentId = existingPaymentId || paymentPayload.id;
+          }
+          if (!completedOrder.paymentTransferred) {
+            patchPayload.paymentTransferred = true;
+          }
+          if (!completedOrder.paymentTransferredAt) {
+            patchPayload.paymentTransferredAt = nowIso;
+          }
+          if (!completedOrder.invoiceGeneratedAt || !completedOrder.invoiceId) {
+            patchPayload.invoiceId = invoice.invoiceId;
+            patchPayload.invoiceGeneratedAt = nowIso;
+          }
+
+          if (Object.keys(patchPayload).length > 0) {
+            await updateOrder(completedOrder.id, patchPayload);
+          }
+        }
+      }
+
+      await loadOrders();
+    } catch {
+      alert("Could not complete order. Please retry.");
       await loadOrders();
     } finally {
       setActionLoadingId("");
     }
   };
-
-  const completedCount = orders.length - pendingCount;
 
   return (
     <div className="mx-auto w-full max-w-6xl space-y-6">
@@ -247,15 +404,17 @@ export default function OrdersPage() {
             </p>
           </div>
           <button
-            onClick={loadOrders}
-            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            type="button"
+            onClick={() => void handleSyncNow()}
+            disabled={isSyncing}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-70"
           >
-            Sync Now
+            {isSyncing ? "Syncing..." : "Sync Now"}
           </button>
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
+      <div className="grid gap-4 sm:grid-cols-4">
         <div className="rounded-xl border bg-white p-4 shadow-sm">
           <p className="text-sm text-gray-500">Total Orders</p>
           <p className="mt-1 text-2xl font-bold text-gray-900">{orders.length}</p>
@@ -263,6 +422,10 @@ export default function OrdersPage() {
         <div className="rounded-xl border bg-white p-4 shadow-sm">
           <p className="text-sm text-gray-500">Pending</p>
           <p className="mt-1 text-2xl font-bold text-amber-600">{pendingCount}</p>
+        </div>
+        <div className="rounded-xl border bg-white p-4 shadow-sm">
+          <p className="text-sm text-gray-500">Preparing</p>
+          <p className="mt-1 text-2xl font-bold text-blue-600">{preparingCount}</p>
         </div>
         <div className="rounded-xl border bg-white p-4 shadow-sm">
           <p className="text-sm text-gray-500">Completed</p>
@@ -300,6 +463,10 @@ export default function OrdersPage() {
                     className={`rounded-full px-3 py-1 text-xs font-semibold ${
                       order.status === "Completed"
                         ? "bg-emerald-100 text-emerald-700"
+                        : order.status === "Preparing"
+                        ? "bg-blue-100 text-blue-700"
+                        : order.status === "Cancelled"
+                        ? "bg-red-100 text-red-700"
                         : "bg-amber-100 text-amber-700"
                     }`}
                   >
@@ -337,28 +504,44 @@ export default function OrdersPage() {
               </div>
 
               <div className="mt-4 flex flex-wrap gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const success = printInvoice(buildInvoiceFromOrder(order));
-                    if (!success) {
-                      alert("Please allow popups to print invoice.");
-                    }
-                  }}
-                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-                >
-                  Print Invoice
-                </button>
-                <button
-                  type="button"
-                  onClick={() => downloadInvoice(buildInvoiceFromOrder(order))}
-                  className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-                >
-                  Download Invoice
-                </button>
+                {order.status === "Completed" && (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const success = printInvoice(buildInvoiceFromOrder(order));
+                        if (!success) {
+                          alert("Please allow popups to print invoice.");
+                        }
+                      }}
+                      className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                    >
+                      Print Invoice
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => downloadInvoice(buildInvoiceFromOrder(order))}
+                      className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                    >
+                      Download Invoice
+                    </button>
+                  </>
+                )}
 
-                {order.status !== "Completed" && (
+                {order.status === "Pending" && (
                   <button
+                    type="button"
+                    onClick={() => markPreparing(order.id)}
+                    disabled={actionLoadingId === order.id}
+                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70"
+                  >
+                    {actionLoadingId === order.id ? "Updating..." : "Mark Preparing"}
+                  </button>
+                )}
+
+                {order.status !== "Completed" && order.status !== "Cancelled" && (
+                  <button
+                    type="button"
                     onClick={() => markCompleted(order.id)}
                     disabled={actionLoadingId === order.id}
                     className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"

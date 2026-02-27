@@ -5,7 +5,7 @@ import {
   updateOrderInStore,
 } from "@/lib/server-store";
 
-const ORDER_STATUSES = ["Pending", "Completed", "Cancelled"];
+const ORDER_STATUSES = ["Pending", "Preparing", "Completed", "Cancelled"];
 const PAYMENT_METHODS = ["UPI", "Cash", "Card"];
 const PAYMENT_STATUSES = ["Paid", "Pending", "Unpaid", "Failed"];
 const MAX_TOTAL = 500000;
@@ -48,8 +48,10 @@ const normalizePaymentMethod = (value) => {
 
 const normalizePaymentStatus = (value) => {
   const status = sanitizeText(value, 20);
-  return PAYMENT_STATUSES.includes(status) ? status : "Paid";
+  return PAYMENT_STATUSES.includes(status) ? status : "Pending";
 };
+
+const normalizeBoolean = (value) => Boolean(value);
 
 const sanitizeOrderItem = (item) => {
   if (!item || typeof item !== "object") return null;
@@ -109,6 +111,15 @@ const sanitizeOrderPayload = (payload, options = {}) => {
     paymentMethod: normalizePaymentMethod(payload.paymentMethod),
     paymentId: sanitizeText(payload.paymentId, 64) || "-",
     time: normalizeDate(payload.time),
+    invoiceId: sanitizeText(payload.invoiceId, 64),
+    invoiceGeneratedAt: payload.invoiceGeneratedAt
+      ? normalizeDate(payload.invoiceGeneratedAt)
+      : "",
+    completedAt: payload.completedAt ? normalizeDate(payload.completedAt) : "",
+    paymentTransferred: normalizeBoolean(payload.paymentTransferred),
+    paymentTransferredAt: payload.paymentTransferredAt
+      ? normalizeDate(payload.paymentTransferredAt)
+      : "",
   };
 
   return { order };
@@ -155,24 +166,81 @@ export async function POST(request) {
 export async function PATCH(request) {
   try {
     const body = await request.json();
-    const id = String(body?.id || "").trim();
-    const status = String(body?.status || "").trim();
-
-    if (!id || !status) {
+    const id = sanitizeText(body?.id, 64);
+    if (!id) {
       return NextResponse.json(
-        { error: "Order id and status are required" },
+        { error: "Order id is required" },
         { status: 400 }
       );
     }
 
-    if (!ORDER_STATUSES.includes(status)) {
+    const updates = {};
+
+    if (Object.prototype.hasOwnProperty.call(body || {}, "status")) {
+      const status = sanitizeText(body?.status, 20);
+      if (!ORDER_STATUSES.includes(status)) {
+        return NextResponse.json(
+          { error: `Invalid status. Allowed values: ${ORDER_STATUSES.join(", ")}` },
+          { status: 400 }
+        );
+      }
+      updates.status = status;
+      if (status === "Completed") {
+        updates.completedAt = normalizeDate(body?.completedAt);
+      }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body || {}, "paymentStatus")) {
+      const paymentStatus = sanitizeText(body?.paymentStatus, 20);
+      if (!PAYMENT_STATUSES.includes(paymentStatus)) {
+        return NextResponse.json(
+          { error: `Invalid payment status. Allowed values: ${PAYMENT_STATUSES.join(", ")}` },
+          { status: 400 }
+        );
+      }
+      updates.paymentStatus = paymentStatus;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body || {}, "paymentMethod")) {
+      updates.paymentMethod = normalizePaymentMethod(body?.paymentMethod);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body || {}, "paymentId")) {
+      updates.paymentId = sanitizeText(body?.paymentId, 64) || "-";
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body || {}, "invoiceId")) {
+      updates.invoiceId = sanitizeText(body?.invoiceId, 64);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body || {}, "invoiceGeneratedAt")) {
+      updates.invoiceGeneratedAt = body?.invoiceGeneratedAt
+        ? normalizeDate(body.invoiceGeneratedAt)
+        : "";
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body || {}, "completedAt")) {
+      updates.completedAt = body?.completedAt ? normalizeDate(body.completedAt) : "";
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body || {}, "paymentTransferred")) {
+      updates.paymentTransferred = normalizeBoolean(body?.paymentTransferred);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body || {}, "paymentTransferredAt")) {
+      updates.paymentTransferredAt = body?.paymentTransferredAt
+        ? normalizeDate(body.paymentTransferredAt)
+        : "";
+    }
+
+    if (Object.keys(updates).length === 0) {
       return NextResponse.json(
-        { error: `Invalid status. Allowed values: ${ORDER_STATUSES.join(", ")}` },
+        { error: "No valid fields provided for update" },
         { status: 400 }
       );
     }
 
-    const updated = await updateOrderInStore(id, { status });
+    const updated = await updateOrderInStore(id, updates);
     if (!updated) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }

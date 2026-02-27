@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Edit3, Plus, Search, Trash2 } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Edit3, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
 
 const INVENTORY_STORAGE_KEY = "restaurantInventory";
 
@@ -15,6 +15,34 @@ const EMPTY_FORM = {
   supplier: "",
 };
 
+const toNumber = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const normalizeText = (value) => String(value || "").trim();
+
+const normalizeInventoryItem = (item, index = 0) => {
+  const source = item && typeof item === "object" ? item : {};
+
+  return {
+    id: normalizeText(source.id) || `inv-${Date.now()}-${index}`,
+    name: normalizeText(source.name),
+    category: normalizeText(source.category),
+    currentStock: Math.max(0, toNumber(source.currentStock)),
+    minStock: Math.max(0, toNumber(source.minStock)),
+    unit: normalizeText(source.unit) || "kg",
+    pricePerUnit: Math.max(0, toNumber(source.pricePerUnit)),
+    supplier: normalizeText(source.supplier),
+    lastUpdated: source.lastUpdated || new Date().toISOString(),
+  };
+};
+
+const normalizeInventoryList = (items) =>
+  (Array.isArray(items) ? items : [])
+    .map((item, index) => normalizeInventoryItem(item, index))
+    .filter((item) => item.name);
+
 const readInventory = () => {
   if (typeof window === "undefined") return [];
   const raw = localStorage.getItem(INVENTORY_STORAGE_KEY);
@@ -22,22 +50,7 @@ const readInventory = () => {
 
   try {
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed
-      .filter((item) => item && typeof item === "object")
-      .map((item, index) => ({
-        id: item.id || `inv-${index}-${Date.now()}`,
-        name: String(item.name || "").trim(),
-        category: String(item.category || "").trim(),
-        currentStock: Number(item.currentStock) || 0,
-        minStock: Number(item.minStock) || 0,
-        unit: String(item.unit || "kg").trim() || "kg",
-        pricePerUnit: Number(item.pricePerUnit) || 0,
-        supplier: String(item.supplier || "").trim(),
-        lastUpdated: item.lastUpdated || new Date().toISOString(),
-      }))
-      .filter((item) => item.name);
+    return normalizeInventoryList(parsed);
   } catch {
     return [];
   }
@@ -45,7 +58,46 @@ const readInventory = () => {
 
 const saveInventory = (items) => {
   if (typeof window === "undefined") return;
-  localStorage.setItem(INVENTORY_STORAGE_KEY, JSON.stringify(items));
+  localStorage.setItem(
+    INVENTORY_STORAGE_KEY,
+    JSON.stringify(normalizeInventoryList(items))
+  );
+};
+
+const fetchInventoryFromApi = async () => {
+  const response = await fetch("/api/inventory", { cache: "no-store" });
+  if (!response.ok) throw new Error("Failed to fetch inventory");
+  return response.json();
+};
+
+const createInventoryItemApi = async (payload) => {
+  const response = await fetch("/api/inventory", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) throw new Error("Failed to create inventory item");
+  return response.json();
+};
+
+const updateInventoryItemApi = async (id, payload) => {
+  const response = await fetch("/api/inventory", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id, ...payload }),
+  });
+  if (!response.ok) throw new Error("Failed to update inventory item");
+  return response.json();
+};
+
+const deleteInventoryItemApi = async (id) => {
+  const response = await fetch("/api/inventory", {
+    method: "DELETE",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
+  if (!response.ok) throw new Error("Failed to delete inventory item");
+  return response.json();
 };
 
 const getStockStatus = (item) => {
@@ -67,6 +119,35 @@ export default function InventoryPage() {
   const [statusFilter, setStatusFilter] = useState("All");
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState(null);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  const loadInventory = useCallback(async () => {
+    try {
+      setIsSyncing(true);
+      const serverItems = normalizeInventoryList(await fetchInventoryFromApi());
+      setInventory(serverItems);
+      saveInventory(serverItems);
+    } catch {
+      setInventory(readInventory());
+    } finally {
+      setIsSyncing(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const timeoutId = window.setTimeout(() => {
+      void loadInventory();
+    }, 0);
+    const intervalId = window.setInterval(() => {
+      void loadInventory();
+    }, 15000);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+      window.clearInterval(intervalId);
+    };
+  }, [loadInventory]);
 
   useEffect(() => {
     saveInventory(inventory);
@@ -94,8 +175,12 @@ export default function InventoryPage() {
 
   const stats = useMemo(() => {
     const totalItems = inventory.length;
-    const outItems = inventory.filter((item) => getStockStatus(item) === "Out").length;
-    const lowItems = inventory.filter((item) => getStockStatus(item) === "Low").length;
+    const outItems = inventory.filter(
+      (item) => getStockStatus(item) === "Out"
+    ).length;
+    const lowItems = inventory.filter(
+      (item) => getStockStatus(item) === "Low"
+    ).length;
     const totalValue = inventory.reduce(
       (sum, item) => sum + item.currentStock * item.pricePerUnit,
       0
@@ -109,7 +194,7 @@ export default function InventoryPage() {
     setEditingId(null);
   };
 
-  const handleSubmit = () => {
+  const buildPayloadFromForm = () => {
     const name = form.name.trim();
     const category = form.category.trim();
     const supplier = form.supplier.trim();
@@ -118,12 +203,16 @@ export default function InventoryPage() {
     const pricePerUnit = Number(form.pricePerUnit);
     const unit = String(form.unit || "kg").trim() || "kg";
 
-    if (!name || !category || Number.isNaN(currentStock) || Number.isNaN(minStock)) {
-      alert("Please enter valid name, category, current stock, and min stock.");
-      return;
+    if (
+      !name ||
+      !category ||
+      Number.isNaN(currentStock) ||
+      Number.isNaN(minStock)
+    ) {
+      return null;
     }
 
-    const payload = {
+    return {
       name,
       category,
       supplier,
@@ -133,20 +222,43 @@ export default function InventoryPage() {
       pricePerUnit: Number.isNaN(pricePerUnit) ? 0 : Math.max(0, pricePerUnit),
       lastUpdated: new Date().toISOString(),
     };
+  };
 
-    if (editingId) {
-      setInventory((prev) =>
-        prev.map((item) => (item.id === editingId ? { ...item, ...payload } : item))
-      );
-      resetForm();
+  const handleSubmit = async () => {
+    const payload = buildPayloadFromForm();
+    if (!payload) {
+      alert("Please enter valid name, category, current stock, and min stock.");
       return;
     }
 
-    setInventory((prev) => [
-      { id: `inv-${Date.now()}`, ...payload },
-      ...prev,
-    ]);
-    resetForm();
+    try {
+      setIsSaving(true);
+
+      if (editingId) {
+        await updateInventoryItemApi(editingId, payload);
+        await loadInventory();
+      } else {
+        const nextItem = {
+          id: `inv-${Date.now()}`,
+          ...payload,
+        };
+        await createInventoryItemApi(nextItem);
+        await loadInventory();
+      }
+    } catch {
+      if (editingId) {
+        setInventory((prev) =>
+          prev.map((item) =>
+            item.id === editingId ? { ...item, ...payload } : item
+          )
+        );
+      } else {
+        setInventory((prev) => [{ id: `inv-${Date.now()}`, ...payload }, ...prev]);
+      }
+    } finally {
+      setIsSaving(false);
+      resetForm();
+    }
   };
 
   const startEdit = (item) => {
@@ -162,34 +274,68 @@ export default function InventoryPage() {
     });
   };
 
-  const removeItem = (id) => {
-    setInventory((prev) => prev.filter((item) => item.id !== id));
-    if (editingId === id) {
-      resetForm();
+  const removeItem = async (id) => {
+    try {
+      setIsSaving(true);
+      await deleteInventoryItemApi(id);
+      await loadInventory();
+    } catch {
+      setInventory((prev) => prev.filter((item) => item.id !== id));
+    } finally {
+      setIsSaving(false);
+      if (editingId === id) {
+        resetForm();
+      }
     }
   };
 
-  const adjustStock = (id, delta) => {
-    setInventory((prev) =>
-      prev.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              currentStock: Math.max(0, item.currentStock + delta),
-              lastUpdated: new Date().toISOString(),
-            }
-          : item
-      )
-    );
+  const adjustStock = async (id, delta) => {
+    const currentItem = inventory.find((item) => item.id === id);
+    if (!currentItem) return;
+
+    const nextStock = Math.max(0, currentItem.currentStock + delta);
+    const payload = {
+      ...currentItem,
+      currentStock: nextStock,
+      lastUpdated: new Date().toISOString(),
+    };
+
+    try {
+      setIsSaving(true);
+      await updateInventoryItemApi(id, payload);
+      await loadInventory();
+    } catch {
+      setInventory((prev) =>
+        prev.map((item) =>
+          item.id === id
+            ? { ...item, currentStock: nextStock, lastUpdated: payload.lastUpdated }
+            : item
+        )
+      );
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6">
       <div className="rounded-2xl bg-white p-5 shadow">
-        <h1 className="text-2xl font-bold text-gray-900">Inventory</h1>
-        <p className="mt-1 text-sm text-gray-600">
-          Dynamic stock management with filters, live status, and quick actions.
-        </p>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Inventory</h1>
+            <p className="mt-1 text-sm text-gray-600">
+              Dynamic stock management with server sync and offline fallback.
+            </p>
+          </div>
+          <button
+            onClick={() => void loadInventory()}
+            disabled={isSyncing}
+            className="inline-flex items-center gap-2 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <RefreshCw className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
+            {isSyncing ? "Syncing..." : "Sync"}
+          </button>
+        </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -313,11 +459,12 @@ export default function InventoryPage() {
           />
           <div className="flex gap-2">
             <button
-              onClick={handleSubmit}
-              className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700"
+              onClick={() => void handleSubmit()}
+              disabled={isSaving}
+              className="inline-flex flex-1 items-center justify-center gap-2 rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
             >
               <Plus className="h-4 w-4" />
-              {editingId ? "Update" : "Add"}
+              {isSaving ? "Saving..." : editingId ? "Update" : "Add"}
             </button>
             {editingId && (
               <button
@@ -340,10 +487,7 @@ export default function InventoryPage() {
           filteredInventory.map((item) => {
             const status = getStockStatus(item);
             return (
-              <div
-                key={item.id}
-                className="rounded-xl border bg-white p-4 shadow-sm"
-              >
+              <div key={item.id} className="rounded-xl border bg-white p-4 shadow-sm">
                 <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
                   <div className="space-y-1">
                     <div className="flex flex-wrap items-center gap-2">
@@ -373,19 +517,19 @@ export default function InventoryPage() {
 
                   <div className="flex flex-wrap gap-2">
                     <button
-                      onClick={() => adjustStock(item.id, -1)}
+                      onClick={() => void adjustStock(item.id, -1)}
                       className="rounded-lg border px-3 py-1 text-sm hover:bg-gray-50"
                     >
                       -1
                     </button>
                     <button
-                      onClick={() => adjustStock(item.id, 1)}
+                      onClick={() => void adjustStock(item.id, 1)}
                       className="rounded-lg border px-3 py-1 text-sm hover:bg-gray-50"
                     >
                       +1
                     </button>
                     <button
-                      onClick={() => adjustStock(item.id, 5)}
+                      onClick={() => void adjustStock(item.id, 5)}
                       className="rounded-lg border px-3 py-1 text-sm hover:bg-gray-50"
                     >
                       +5
@@ -398,7 +542,7 @@ export default function InventoryPage() {
                       Edit
                     </button>
                     <button
-                      onClick={() => removeItem(item.id)}
+                      onClick={() => void removeItem(item.id)}
                       className="inline-flex items-center gap-1 rounded-lg border border-red-200 px-3 py-1 text-sm text-red-700 hover:bg-red-50"
                     >
                       <Trash2 className="h-4 w-4" />

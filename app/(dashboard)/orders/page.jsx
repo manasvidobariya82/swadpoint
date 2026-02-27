@@ -319,12 +319,7 @@ export default function OrdersPage() {
     if (!normalizedId) return;
 
     const targetOrder = orders.find((order) => order.id === normalizedId);
-    if (
-      !targetOrder ||
-      targetOrder.status === "Completed" ||
-      targetOrder.status === "Cancelled"
-    )
-      return;
+    if (!targetOrder || targetOrder.status !== "Preparing") return;
 
     try {
       setActionLoadingId(normalizedId);
@@ -535,18 +530,18 @@ export default function OrdersPage() {
                     disabled={actionLoadingId === order.id}
                     className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70"
                   >
-                    {actionLoadingId === order.id ? "Updating..." : "Mark Preparing"}
+                    {actionLoadingId === order.id ? "Updating..." : "Preparing"}
                   </button>
                 )}
 
-                {order.status !== "Completed" && order.status !== "Cancelled" && (
+                {order.status === "Preparing" && (
                   <button
                     type="button"
                     onClick={() => markCompleted(order.id)}
                     disabled={actionLoadingId === order.id}
                     className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
                   >
-                    {actionLoadingId === order.id ? "Updating..." : "Mark Completed"}
+                    {actionLoadingId === order.id ? "Updating..." : "Mark As Completed"}
                   </button>
                 )}
               </div>

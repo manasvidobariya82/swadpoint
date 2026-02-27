@@ -8,6 +8,7 @@ const ORDER_STATUSES = ["Pending", "Preparing", "Completed", "Cancelled"];
 const PAYMENT_METHODS = ["UPI", "Cash", "Card"];
 const PAYMENT_STATUSES = ["Paid", "Pending", "Unpaid", "Failed"];
 const DASHBOARD_REFRESH_INTERVAL_MS = 5000;
+const WORKFLOW_STEPS = ["Pending", "Preparing", "Completed"];
 
 const fetchOrdersFromApi = async () => {
   const response = await fetch("/api/orders", { cache: "no-store" });
@@ -76,6 +77,13 @@ const formatDateTime = (value) => {
   const timestamp = toTimestamp(value);
   if (!timestamp) return "-";
   return new Date(timestamp).toLocaleString();
+};
+
+const getStatusPillClasses = (status) => {
+  if (status === "Completed") return "bg-emerald-100 text-emerald-700";
+  if (status === "Preparing") return "bg-blue-100 text-blue-700";
+  if (status === "Cancelled") return "bg-red-100 text-red-700";
+  return "bg-amber-100 text-amber-700";
 };
 
 const sanitizeOrderItem = (item, index) => {
@@ -410,22 +418,30 @@ export default function OrdersPage() {
         </div>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-4">
-        <div className="rounded-xl border bg-white p-4 shadow-sm">
-          <p className="text-sm text-gray-500">Total Orders</p>
-          <p className="mt-1 text-2xl font-bold text-gray-900">{orders.length}</p>
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="rounded-2xl border bg-white p-4 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-gray-500">
+            Total Orders
+          </p>
+          <p className="mt-1 text-3xl font-bold text-gray-900">{orders.length}</p>
         </div>
-        <div className="rounded-xl border bg-white p-4 shadow-sm">
-          <p className="text-sm text-gray-500">Pending</p>
-          <p className="mt-1 text-2xl font-bold text-amber-600">{pendingCount}</p>
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-amber-700">
+            Pending
+          </p>
+          <p className="mt-1 text-3xl font-bold text-amber-700">{pendingCount}</p>
         </div>
-        <div className="rounded-xl border bg-white p-4 shadow-sm">
-          <p className="text-sm text-gray-500">Preparing</p>
-          <p className="mt-1 text-2xl font-bold text-blue-600">{preparingCount}</p>
+        <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-blue-700">
+            Preparing
+          </p>
+          <p className="mt-1 text-3xl font-bold text-blue-700">{preparingCount}</p>
         </div>
-        <div className="rounded-xl border bg-white p-4 shadow-sm">
-          <p className="text-sm text-gray-500">Completed</p>
-          <p className="mt-1 text-2xl font-bold text-emerald-600">{completedCount}</p>
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 shadow-sm">
+          <p className="text-xs font-medium uppercase tracking-wide text-emerald-700">
+            Completed
+          </p>
+          <p className="mt-1 text-3xl font-bold text-emerald-700">{completedCount}</p>
         </div>
       </div>
 
@@ -439,115 +455,182 @@ export default function OrdersPage() {
         </div>
       ) : (
         <div className="space-y-4">
-          {orders.map((order) => (
-            <div
-              key={order.id}
-              className="rounded-2xl border bg-white p-4 shadow-sm sm:p-5"
-            >
-              <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
-                <div>
-                  <p className="font-semibold text-gray-900">Order #{order.id}</p>
-                  <p className="text-sm text-gray-600">
-                    Table {order.tableNo || "NA"} | {order.customerName || "Walk-in"}
-                  </p>
-                  <p className="text-xs text-gray-500">
-                    {formatDateTime(order.time)}
-                  </p>
-                </div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                      order.status === "Completed"
-                        ? "bg-emerald-100 text-emerald-700"
-                        : order.status === "Preparing"
-                        ? "bg-blue-100 text-blue-700"
-                        : order.status === "Cancelled"
-                        ? "bg-red-100 text-red-700"
-                        : "bg-amber-100 text-amber-700"
-                    }`}
-                  >
-                    {order.status}
-                  </span>
-                  <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700">
-                    {order.paymentStatus || "Paid"} | {order.paymentMethod || "UPI"}
-                  </span>
-                </div>
-              </div>
+          {orders.map((order) => {
+            const workflowIndex = WORKFLOW_STEPS.indexOf(order.status);
+            const statusIndex = workflowIndex >= 0 ? workflowIndex : 0;
+            const invoice = buildInvoiceFromOrder(order);
 
-              <div className="mt-4 rounded-xl border border-gray-200">
-                <div className="hidden grid-cols-12 border-b bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-600 sm:grid">
-                  <p className="col-span-7">Item</p>
-                  <p className="col-span-2 text-center">Qty</p>
-                  <p className="col-span-3 text-right">Amount</p>
-                </div>
-                <div className="divide-y">
-                  {(Array.isArray(order.items) ? order.items : []).map((item, index) => (
-                    <div
-                      key={`${order.id}-${index}`}
-                      className="grid gap-1 px-3 py-2 text-sm text-gray-700 sm:grid-cols-12 sm:items-center"
+            return (
+              <div
+                key={order.id}
+                className="rounded-2xl border bg-white p-4 shadow-sm sm:p-5"
+              >
+                <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+                  <div>
+                    <p className="text-base font-semibold text-gray-900">
+                      Order #{order.id}
+                    </p>
+                    <p className="mt-1 text-sm text-gray-600">
+                      Table {order.tableNo || "NA"} | {order.customerName || "Walk-in"}
+                    </p>
+                    <p className="text-xs text-gray-500">{formatDateTime(order.time)}</p>
+                    <p className="mt-2 text-sm font-semibold text-gray-900">
+                      Total: Rs. {toNumber(order.total || 0).toFixed(2)}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span
+                      className={`rounded-full px-3 py-1 text-xs font-semibold ${getStatusPillClasses(
+                        order.status
+                      )}`}
                     >
-                      <p className="sm:col-span-7">{item.name || "Item"}</p>
-                      <p className="sm:col-span-2 sm:text-center">x{Math.max(1, toNumber(item.qty || 1))}</p>
-                      <p className="font-medium sm:col-span-3 sm:text-right">
-                        Rs. {toNumber(item.lineTotal ?? item.price ?? 0).toFixed(2)}
-                      </p>
+                      {order.status}
+                    </span>
+                    <span className="rounded-full bg-gray-100 px-3 py-1 text-xs font-medium text-gray-700">
+                      {order.paymentStatus || "Paid"} | {order.paymentMethod || "UPI"}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-xl border border-gray-200 p-3">
+                  <p className="mb-3 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                    Order Workflow
+                  </p>
+                  <div className="grid gap-2 sm:grid-cols-3">
+                    {WORKFLOW_STEPS.map((step, index) => {
+                      const isReached = statusIndex >= index;
+                      const isCurrent = order.status === step;
+                      return (
+                        <div
+                          key={`${order.id}-${step}`}
+                          className={`rounded-lg border px-3 py-2 text-xs font-semibold ${
+                            isCurrent
+                              ? "border-blue-300 bg-blue-50 text-blue-700"
+                              : isReached
+                              ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                              : "border-gray-200 bg-gray-50 text-gray-500"
+                          }`}
+                        >
+                          {step}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="mt-4 rounded-xl border border-gray-200">
+                  <div className="hidden grid-cols-12 border-b bg-gray-50 px-3 py-2 text-xs font-semibold text-gray-600 sm:grid">
+                    <p className="col-span-7">Item</p>
+                    <p className="col-span-2 text-center">Qty</p>
+                    <p className="col-span-3 text-right">Amount</p>
+                  </div>
+                  <div className="divide-y">
+                    {(Array.isArray(order.items) ? order.items : []).map((item, index) => (
+                      <div
+                        key={`${order.id}-${index}`}
+                        className="grid gap-1 px-3 py-2 text-sm text-gray-700 sm:grid-cols-12 sm:items-center"
+                      >
+                        <p className="sm:col-span-7">{item.name || "Item"}</p>
+                        <p className="sm:col-span-2 sm:text-center">
+                          x{Math.max(1, toNumber(item.qty || 1))}
+                        </p>
+                        <p className="font-medium sm:col-span-3 sm:text-right">
+                          Rs. {toNumber(item.lineTotal ?? item.price ?? 0).toFixed(2)}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="border-t px-3 py-2 text-right text-sm font-semibold text-gray-900">
+                    Total: Rs. {toNumber(order.total || 0).toFixed(2)}
+                  </div>
+                </div>
+
+                <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                  <div className="rounded-xl border border-gray-200 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Order Action
+                    </p>
+                    <div className="mt-2">
+                      {order.status === "Pending" && (
+                        <button
+                          type="button"
+                          onClick={() => markPreparing(order.id)}
+                          disabled={actionLoadingId === order.id}
+                          className="w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70"
+                        >
+                          {actionLoadingId === order.id ? "Updating..." : "Preparing"}
+                        </button>
+                      )}
+
+                      {order.status === "Preparing" && (
+                        <button
+                          type="button"
+                          onClick={() => markCompleted(order.id)}
+                          disabled={actionLoadingId === order.id}
+                          className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+                        >
+                          {actionLoadingId === order.id
+                            ? "Updating..."
+                            : "Mark As Completed"}
+                        </button>
+                      )}
+
+                      {order.status === "Completed" && (
+                        <p className="rounded-lg bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
+                          Order completed successfully.
+                        </p>
+                      )}
+
+                      {order.status === "Cancelled" && (
+                        <p className="rounded-lg bg-red-50 px-3 py-2 text-sm font-medium text-red-700">
+                          Order cancelled.
+                        </p>
+                      )}
                     </div>
-                  ))}
-                </div>
-                <div className="border-t px-3 py-2 text-right text-sm font-semibold text-gray-900">
-                  Total: Rs. {toNumber(order.total || 0).toFixed(2)}
+                  </div>
+
+                  <div className="rounded-xl border border-gray-200 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-gray-500">
+                      Invoice
+                    </p>
+                    {order.status === "Completed" ? (
+                      <div className="mt-2 space-y-2">
+                        <p className="text-xs text-gray-500">
+                          {invoice.invoiceId} | {formatDateTime(invoice.issuedAt)}
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const success = printInvoice(invoice);
+                              if (!success) {
+                                alert("Please allow popups to print invoice.");
+                              }
+                            }}
+                            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                          >
+                            Print Invoice
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => downloadInvoice(invoice)}
+                            className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+                          >
+                            Download Invoice
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="mt-2 rounded-lg bg-gray-50 px-3 py-2 text-sm text-gray-500">
+                        Invoice will be available after order is marked completed.
+                      </p>
+                    )}
+                  </div>
                 </div>
               </div>
-
-              <div className="mt-4 flex flex-wrap gap-2">
-                {order.status === "Completed" && (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const success = printInvoice(buildInvoiceFromOrder(order));
-                        if (!success) {
-                          alert("Please allow popups to print invoice.");
-                        }
-                      }}
-                      className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-                    >
-                      Print Invoice
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => downloadInvoice(buildInvoiceFromOrder(order))}
-                      className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
-                    >
-                      Download Invoice
-                    </button>
-                  </>
-                )}
-
-                {order.status === "Pending" && (
-                  <button
-                    type="button"
-                    onClick={() => markPreparing(order.id)}
-                    disabled={actionLoadingId === order.id}
-                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70"
-                  >
-                    {actionLoadingId === order.id ? "Updating..." : "Preparing"}
-                  </button>
-                )}
-
-                {order.status === "Preparing" && (
-                  <button
-                    type="button"
-                    onClick={() => markCompleted(order.id)}
-                    disabled={actionLoadingId === order.id}
-                    className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
-                  >
-                    {actionLoadingId === order.id ? "Updating..." : "Mark As Completed"}
-                  </button>
-                )}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>

@@ -308,37 +308,27 @@ export default function OrdersPage() {
     }
   };
 
-  const markPreparing = async (id) => {
+  const toggleOrderWorkflow = async (id) => {
     if (actionLoadingId) return;
     const normalizedId = normalizeId(id);
     if (!normalizedId) return;
 
     const targetOrder = orders.find((order) => order.id === normalizedId);
     if (!targetOrder) return;
-    if (targetOrder.status === "Preparing") return;
-    if (targetOrder.status === "Completed" || targetOrder.status === "Cancelled") {
+    if (targetOrder.status === "Cancelled") {
       return;
     }
 
-    try {
-      setActionLoadingId(normalizedId);
-      await updateOrder(normalizedId, { status: "Preparing" });
-      await loadOrders();
-    } catch {
-      alert("Could not update order status. Please retry.");
-    } finally {
-      setActionLoadingId("");
-    }
-  };
-
-  const markCompleted = async (id) => {
-    if (actionLoadingId) return;
-    const normalizedId = normalizeId(id);
-    if (!normalizedId) return;
-
-    const targetOrder = orders.find((order) => order.id === normalizedId);
-    if (!targetOrder) return;
-    if (targetOrder.status === "Completed" || targetOrder.status === "Cancelled") {
+    if (targetOrder.status === "Completed") {
+      try {
+        setActionLoadingId(normalizedId);
+        await updateOrder(normalizedId, { status: "Pending" });
+        await loadOrders();
+      } catch {
+        alert("Could not update order workflow. Please retry.");
+      } finally {
+        setActionLoadingId("");
+      }
       return;
     }
 
@@ -355,54 +345,59 @@ export default function OrdersPage() {
 
       if (completedOrder) {
         const invoice = buildInvoiceFromOrder(completedOrder);
-        const existingPayments = await fetchPaymentsFromApi();
-        const existingPayment = (Array.isArray(existingPayments) ? existingPayments : []).find(
-          (payment) =>
-            normalizeId(payment?.orderId) === completedOrder.id ||
-            (normalizeId(completedOrder.paymentId) &&
-              completedOrder.paymentId !== "-" &&
-              normalizeId(payment?.id) === completedOrder.paymentId)
-        );
+        const hasExistingInvoice =
+          Boolean(normalizeId(completedOrder.invoiceId)) &&
+          Boolean(completedOrder.invoiceGeneratedAt);
 
-        const nowIso = new Date().toISOString();
-        const paymentPayload = buildPaymentPayloadFromOrder(completedOrder, invoice);
+        // Invoice and payment transfer must happen only once on the first completion.
+        if (!hasExistingInvoice) {
+          const existingPayments = await fetchPaymentsFromApi();
+          const existingPayment = (Array.isArray(existingPayments) ? existingPayments : []).find(
+            (payment) =>
+              normalizeId(payment?.orderId) === completedOrder.id ||
+              (normalizeId(completedOrder.paymentId) &&
+                completedOrder.paymentId !== "-" &&
+                normalizeId(payment?.id) === completedOrder.paymentId)
+          );
 
-        if (!existingPayment) {
-          const createdPayment = await createPaymentFromOrder(paymentPayload);
-          await updateOrder(completedOrder.id, {
-            paymentId: normalizeId(createdPayment?.id) || paymentPayload.id,
-            paymentStatus: "Paid",
-            paymentTransferred: true,
-            paymentTransferredAt: nowIso,
-            invoiceId: invoice.invoiceId,
-            invoiceGeneratedAt: nowIso,
-          });
-        } else {
-          const patchPayload = {};
-          const existingPaymentId = normalizeId(existingPayment.id);
-          if (!completedOrder.paymentId || completedOrder.paymentId === "-") {
-            patchPayload.paymentId = existingPaymentId || paymentPayload.id;
-          }
-          if (!completedOrder.paymentTransferred) {
-            patchPayload.paymentTransferred = true;
-          }
-          if (!completedOrder.paymentTransferredAt) {
-            patchPayload.paymentTransferredAt = nowIso;
-          }
-          if (!completedOrder.invoiceGeneratedAt || !completedOrder.invoiceId) {
+          const nowIso = new Date().toISOString();
+          const paymentPayload = buildPaymentPayloadFromOrder(completedOrder, invoice);
+
+          if (!existingPayment) {
+            const createdPayment = await createPaymentFromOrder(paymentPayload);
+            await updateOrder(completedOrder.id, {
+              paymentId: normalizeId(createdPayment?.id) || paymentPayload.id,
+              paymentStatus: "Paid",
+              paymentTransferred: true,
+              paymentTransferredAt: nowIso,
+              invoiceId: invoice.invoiceId,
+              invoiceGeneratedAt: nowIso,
+            });
+          } else {
+            const patchPayload = {};
+            const existingPaymentId = normalizeId(existingPayment.id);
+            if (!completedOrder.paymentId || completedOrder.paymentId === "-") {
+              patchPayload.paymentId = existingPaymentId || paymentPayload.id;
+            }
+            if (!completedOrder.paymentTransferred) {
+              patchPayload.paymentTransferred = true;
+            }
+            if (!completedOrder.paymentTransferredAt) {
+              patchPayload.paymentTransferredAt = nowIso;
+            }
             patchPayload.invoiceId = invoice.invoiceId;
             patchPayload.invoiceGeneratedAt = nowIso;
-          }
 
-          if (Object.keys(patchPayload).length > 0) {
-            await updateOrder(completedOrder.id, patchPayload);
+            if (Object.keys(patchPayload).length > 0) {
+              await updateOrder(completedOrder.id, patchPayload);
+            }
           }
         }
       }
 
       await loadOrders();
     } catch {
-      alert("Could not complete order. Please retry.");
+      alert("Could not update order workflow. Please retry.");
       await loadOrders();
     } finally {
       setActionLoadingId("");
@@ -564,27 +559,22 @@ export default function OrdersPage() {
                       Order Action
                     </p>
                     <div className="mt-2">
-                      {order.status === "Pending" && (
+                      {order.status !== "Cancelled" && (
                         <button
                           type="button"
-                          onClick={() => markPreparing(order.id)}
+                          onClick={() => toggleOrderWorkflow(order.id)}
                           disabled={actionLoadingId === order.id}
-                          className="w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-70"
-                        >
-                          {actionLoadingId === order.id ? "Updating..." : "Preparing"}
-                        </button>
-                      )}
-
-                      {order.status === "Preparing" && (
-                        <button
-                          type="button"
-                          onClick={() => markCompleted(order.id)}
-                          disabled={actionLoadingId === order.id}
-                          className="w-full rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+                          className={`w-full rounded-lg px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-70 ${
+                            order.status === "Completed"
+                              ? "bg-amber-600 hover:bg-amber-700"
+                              : "bg-blue-600 hover:bg-blue-700"
+                          }`}
                         >
                           {actionLoadingId === order.id
                             ? "Updating..."
-                            : "Mark As Completed"}
+                            : order.status === "Completed"
+                            ? "Completed"
+                            : "Preparing"}
                         </button>
                       )}
 

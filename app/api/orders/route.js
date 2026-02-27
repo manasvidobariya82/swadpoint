@@ -5,6 +5,115 @@ import {
   updateOrderInStore,
 } from "@/lib/server-store";
 
+const ORDER_STATUSES = ["Pending", "Completed", "Cancelled"];
+const PAYMENT_METHODS = ["UPI", "Cash", "Card"];
+const PAYMENT_STATUSES = ["Paid", "Pending", "Unpaid", "Failed"];
+const MAX_TOTAL = 500000;
+
+const toNumber = (value) => {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const sanitizeText = (value, maxLength = 120) =>
+  String(value || "")
+    .trim()
+    .slice(0, maxLength);
+
+const normalizeDate = (value) => {
+  const parsed = new Date(value).getTime();
+  if (!Number.isFinite(parsed)) return new Date().toISOString();
+  return new Date(parsed).toISOString();
+};
+
+const normalizeMobile = (value) => {
+  const digits = String(value || "").replace(/\D/g, "").slice(0, 10);
+  return /^\d{10}$/.test(digits) ? digits : "-";
+};
+
+const normalizeTableNo = (value) => {
+  const cleaned = sanitizeText(value, 20).replace(/[^a-zA-Z0-9-]/g, "");
+  return cleaned || "NA";
+};
+
+const normalizeStatus = (value) => {
+  const status = sanitizeText(value, 20);
+  return ORDER_STATUSES.includes(status) ? status : "Pending";
+};
+
+const normalizePaymentMethod = (value) => {
+  const method = sanitizeText(value, 20);
+  return PAYMENT_METHODS.includes(method) ? method : "UPI";
+};
+
+const normalizePaymentStatus = (value) => {
+  const status = sanitizeText(value, 20);
+  return PAYMENT_STATUSES.includes(status) ? status : "Paid";
+};
+
+const sanitizeOrderItem = (item) => {
+  if (!item || typeof item !== "object") return null;
+
+  const name = sanitizeText(item.name, 80);
+  const qty = Math.max(1, Math.min(99, Math.floor(toNumber(item.qty || 1))));
+  const price = Math.max(0, Math.min(MAX_TOTAL, toNumber(item.price)));
+  const lineTotalInput = toNumber(item.lineTotal);
+  const lineTotal = lineTotalInput > 0 ? lineTotalInput : price * qty;
+
+  if (!name || lineTotal <= 0) return null;
+
+  return {
+    id: sanitizeText(item.id, 64) || undefined,
+    name,
+    qty,
+    price,
+    lineTotal,
+  };
+};
+
+const sanitizeOrderPayload = (payload, options = {}) => {
+  const { requireItems = false } = options;
+  if (!payload || typeof payload !== "object") {
+    return { error: "Order payload must be an object" };
+  }
+
+  const id = sanitizeText(payload.id, 64);
+  if (!id) return { error: "Order id is required" };
+
+  const items = (Array.isArray(payload.items) ? payload.items : [])
+    .map((item) => sanitizeOrderItem(item))
+    .filter(Boolean);
+
+  if (requireItems && items.length === 0) {
+    return { error: "At least one valid order item is required" };
+  }
+
+  const totalFromItems = items.reduce((sum, item) => sum + toNumber(item.lineTotal), 0);
+  const requestedTotal = toNumber(payload.total);
+  const total = requestedTotal > 0 ? requestedTotal : totalFromItems;
+  if (requireItems && (total <= 0 || total > MAX_TOTAL)) {
+    return { error: "Order total must be between 0 and 500000" };
+  }
+
+  const order = {
+    id,
+    tableNo: normalizeTableNo(payload.tableNo),
+    customerName: sanitizeText(payload.customerName, 80) || "Walk-in",
+    customerMobile: normalizeMobile(
+      payload.customerMobile || payload.mobile || payload.phone
+    ),
+    items,
+    total: Math.max(0, Math.min(MAX_TOTAL, total)),
+    status: normalizeStatus(payload.status),
+    paymentStatus: normalizePaymentStatus(payload.paymentStatus),
+    paymentMethod: normalizePaymentMethod(payload.paymentMethod),
+    paymentId: sanitizeText(payload.paymentId, 64) || "-",
+    time: normalizeDate(payload.time),
+  };
+
+  return { order };
+};
+
 const sortByLatest = (orders) =>
   [...orders].sort(
     (a, b) => new Date(b?.time || 0).getTime() - new Date(a?.time || 0).getTime()
@@ -13,7 +122,10 @@ const sortByLatest = (orders) =>
 export async function GET() {
   try {
     const orders = await getOrdersFromStore();
-    return NextResponse.json(sortByLatest(orders));
+    const normalized = (Array.isArray(orders) ? orders : [])
+      .map((order) => sanitizeOrderPayload(order).order)
+      .filter(Boolean);
+    return NextResponse.json(sortByLatest(normalized));
   } catch {
     return NextResponse.json(
       { error: "Failed to fetch orders" },
@@ -24,10 +136,11 @@ export async function GET() {
 
 export async function POST(request) {
   try {
-    const order = await request.json();
-    if (!order || typeof order !== "object" || !order.id) {
+    const payload = await request.json();
+    const { order, error } = sanitizeOrderPayload(payload, { requireItems: true });
+    if (error) {
       return NextResponse.json(
-        { error: "Invalid order payload" },
+        { error },
         { status: 400 }
       );
     }
@@ -52,12 +165,20 @@ export async function PATCH(request) {
       );
     }
 
+    if (!ORDER_STATUSES.includes(status)) {
+      return NextResponse.json(
+        { error: `Invalid status. Allowed values: ${ORDER_STATUSES.join(", ")}` },
+        { status: 400 }
+      );
+    }
+
     const updated = await updateOrderInStore(id, { status });
     if (!updated) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
 
-    return NextResponse.json(updated);
+    const normalizedUpdated = sanitizeOrderPayload(updated).order || updated;
+    return NextResponse.json(normalizedUpdated);
   } catch {
     return NextResponse.json(
       { error: "Failed to update order" },

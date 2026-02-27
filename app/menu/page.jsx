@@ -27,10 +27,42 @@ const CATEGORY_CODE_MAP = {
   d: "Dessert",
   b: "Beverage",
 };
+const VALID_PAYMENT_METHODS = ["UPI", "Cash"];
+const MAX_MENU_ITEM_NAME_LENGTH = 80;
+const MAX_MENU_ITEM_DESCRIPTION_LENGTH = 240;
+const MAX_MENU_ITEM_PRICE = 100000;
+const MAX_CUSTOMER_NAME_LENGTH = 80;
+const MAX_CART_ITEM_QTY = 25;
 
 const toNumber = (value) => {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const sanitizeText = (value, maxLength) =>
+  String(value || "")
+    .trim()
+    .slice(0, maxLength);
+
+const normalizeTableNumber = (value) => {
+  const digits = String(value || "").replace(/\D/g, "");
+  if (!digits) return "";
+
+  const parsed = Number(digits);
+  if (!Number.isInteger(parsed) || parsed <= 0) return "";
+  return String(parsed);
+};
+
+const normalizeMobileNumber = (value) =>
+  String(value || "").replace(/\D/g, "").slice(0, 10);
+
+const isValidCustomerName = (value) => {
+  const name = sanitizeText(value, MAX_CUSTOMER_NAME_LENGTH);
+  if (name.length < 2) return false;
+
+  const hasOnlyAllowedChars =
+    name.replace(/[\p{L}\s.'-]/gu, "").length === 0;
+  return hasOnlyAllowedChars;
 };
 
 const normalizeCategory = (value) => {
@@ -61,6 +93,27 @@ const createUpiUrl = (upiId, payeeName, amount) =>
     payeeName
   )}&am=${amount.toFixed(2)}&cu=INR`;
 
+const sanitizeMenuItem = (item, index, idPrefix = "menu-item") => {
+  if (!item || typeof item !== "object") return null;
+
+  const id = sanitizeText(item.id, 64) || `${idPrefix}-${index}`;
+  const name = sanitizeText(item.name, MAX_MENU_ITEM_NAME_LENGTH);
+  const description = sanitizeText(item.description, MAX_MENU_ITEM_DESCRIPTION_LENGTH);
+  const category = decodeCategory(item.category);
+  const price = toNumber(item.price);
+
+  if (name.length < 2) return null;
+  if (price <= 0 || price > MAX_MENU_ITEM_PRICE) return null;
+
+  return {
+    id,
+    name,
+    description,
+    category,
+    price,
+  };
+};
+
 const parseItemsQuery = (value) => {
   if (!value) return [];
 
@@ -69,15 +122,20 @@ const parseItemsQuery = (value) => {
     if (!Array.isArray(parsed)) return [];
 
     return parsed
-      .filter((item) => item && typeof item === "object")
-      .map((item, index) => ({
-        id: item.id || item.i || `query-item-${index}`,
-        name: String(item.name || item.n || "").trim(),
-        description: String(item.description || item.d || "").trim(),
-        category: decodeCategory(item.category || item.c),
-        price: toNumber(item.price ?? item.p),
-      }))
-      .filter((item) => item.name);
+      .map((item, index) =>
+        sanitizeMenuItem(
+          {
+            id: item.id || item.i,
+            name: item.name || item.n,
+            description: item.description || item.d,
+            category: item.category || item.c,
+            price: item.price ?? item.p,
+          },
+          index,
+          "query-item"
+        )
+      )
+      .filter(Boolean);
   } catch {
     return [];
   }
@@ -99,30 +157,35 @@ const parseItemsHash = (value) => {
         name = candidateName;
       }
 
-      return {
-        id: `hash-item-${index}`,
-        name: String(name || "").trim(),
-        description: "",
-        category: decodeCategory(categoryCode),
-        price: toNumber(priceValue),
-      };
+      return sanitizeMenuItem(
+        {
+          id: `hash-item-${index}`,
+          name,
+          description: "",
+          category: categoryCode,
+          price: priceValue,
+        },
+        index,
+        "hash-item"
+      );
     })
-    .filter((item) => item.name);
+    .filter(Boolean);
 };
 
 const sanitizeMenuItems = (value) => {
   if (!Array.isArray(value)) return [];
 
   return value
-    .filter((item) => item && typeof item === "object")
-    .map((item, index) => ({
-      id: item.id || `menu-item-${index}`,
-      name: String(item.name || "").trim(),
-      description: String(item.description || "").trim(),
-      category: normalizeCategory(item.category),
-      price: toNumber(item.price),
-    }))
-    .filter((item) => item.name);
+    .map((item, index) =>
+      sanitizeMenuItem(
+        {
+          ...item,
+          category: normalizeCategory(item?.category),
+        },
+        index
+      )
+    )
+    .filter(Boolean);
 };
 
 const fetchMenuFromServer = async () => {
@@ -148,7 +211,7 @@ const postJson = async (url, payload) => {
 
 function CustomerMenuContent() {
   const searchParams = useSearchParams();
-  const tableNo = searchParams.get("table");
+  const tableNoParam = searchParams.get("table");
   const itemsParam = searchParams.get("items");
   const upiIdParam = searchParams.get("upiId");
   const payeeNameParam = searchParams.get("payeeName");
@@ -177,6 +240,7 @@ function CustomerMenuContent() {
 
   const queryMenuItems = useMemo(() => parseItemsQuery(itemsParam), [itemsParam]);
   const localMenuItems = useMemo(() => sanitizeMenuItems(getMenu()), []);
+  const tableNo = useMemo(() => normalizeTableNumber(tableNoParam), [tableNoParam]);
 
   useEffect(() => {
     let isCancelled = false;
@@ -272,7 +336,14 @@ function CustomerMenuContent() {
   }, [upiIdParam, payeeNameParam]);
 
   const cartTotal = useMemo(
-    () => cart.reduce((sum, item) => sum + item.price * item.qty, 0),
+    () =>
+      cart.reduce(
+        (sum, item) =>
+          sum +
+          toNumber(item.price) *
+            Math.max(1, Math.floor(toNumber(item.qty || 1))),
+        0
+      ),
     [cart]
   );
 
@@ -287,28 +358,35 @@ function CustomerMenuContent() {
   }, [paymentConfig, cartTotal, isUpiReady]);
 
   const addToCart = (item) => {
+    const itemId = sanitizeText(item?.id, 64);
+    const itemName = sanitizeText(item?.name, MAX_MENU_ITEM_NAME_LENGTH);
     const price = toNumber(item.price);
+    if (!itemId || !itemName || price <= 0 || price > MAX_MENU_ITEM_PRICE) return;
+
     setCart((prev) => {
-      const index = prev.findIndex((entry) => entry.id === item.id);
+      const index = prev.findIndex((entry) => entry.id === itemId);
       if (index === -1) {
-        return [...prev, { ...item, price, qty: 1 }];
+        return [...prev, { ...item, id: itemId, name: itemName, price, qty: 1 }];
       }
 
       const next = [...prev];
-      next[index] = { ...next[index], qty: next[index].qty + 1 };
+      next[index] = {
+        ...next[index],
+        qty: Math.min(MAX_CART_ITEM_QTY, next[index].qty + 1),
+      };
       return next;
     });
 
-    setRecentlyAdded((prev) => ({ ...prev, [item.id]: true }));
+    setRecentlyAdded((prev) => ({ ...prev, [itemId]: true }));
 
-    if (addTimeoutRef.current[item.id]) {
-      clearTimeout(addTimeoutRef.current[item.id]);
+    if (addTimeoutRef.current[itemId]) {
+      clearTimeout(addTimeoutRef.current[itemId]);
     }
 
-    addTimeoutRef.current[item.id] = setTimeout(() => {
+    addTimeoutRef.current[itemId] = setTimeout(() => {
       setRecentlyAdded((prev) => {
         const next = { ...prev };
-        delete next[item.id];
+        delete next[itemId];
         return next;
       });
     }, 2000);
@@ -327,7 +405,15 @@ function CustomerMenuContent() {
     setCart((prev) =>
       prev
         .map((item) =>
-          item.id === id ? { ...item, qty: Math.max(0, item.qty + change) } : item
+          item.id === id
+            ? {
+                ...item,
+                qty: Math.max(
+                  0,
+                  Math.min(MAX_CART_ITEM_QTY, item.qty + change)
+                ),
+              }
+            : item
         )
         .filter((item) => item.qty > 0)
     );
@@ -344,7 +430,7 @@ function CustomerMenuContent() {
 
   const placeOrder = async () => {
     if (!tableNo) {
-      alert("Table number is missing in QR link.");
+      alert("Table number is invalid in QR link.");
       return;
     }
 
@@ -353,14 +439,14 @@ function CustomerMenuContent() {
       return;
     }
 
-    const normalizedName = customerName.trim();
-    const normalizedMobile = customerMobile.replace(/\D/g, "").slice(0, 10);
+    const normalizedName = sanitizeText(customerName, MAX_CUSTOMER_NAME_LENGTH);
+    const normalizedMobile = normalizeMobileNumber(customerMobile);
     const nextErrors = {
       customerName: "",
       customerMobile: "",
     };
 
-    if (!normalizedName || normalizedName.length < 2) {
+    if (!isValidCustomerName(normalizedName)) {
       nextErrors.customerName = "Enter valid customer name";
     }
 
@@ -374,6 +460,11 @@ function CustomerMenuContent() {
     }
     setFormErrors({ customerName: "", customerMobile: "" });
 
+    if (!VALID_PAYMENT_METHODS.includes(paymentMethod)) {
+      alert("Invalid payment method selected.");
+      return;
+    }
+
     if (paymentMethod === "UPI" && !isUpiReady) {
       alert("UPI is unavailable. Ask restaurant to configure a valid UPI ID.");
       return;
@@ -384,13 +475,27 @@ function CustomerMenuContent() {
     const orderId = `ORD-${now.getTime()}`;
     const paymentId = `PAY-${now.getTime()}`;
 
-    const normalizedItems = cart.map((item) => ({
-      id: item.id,
-      name: item.name,
-      price: item.price,
-      qty: item.qty,
-      lineTotal: item.price * item.qty,
-    }));
+    const normalizedItems = cart
+      .map((item) => {
+        const id = sanitizeText(item.id, 64);
+        const name = sanitizeText(item.name, MAX_MENU_ITEM_NAME_LENGTH);
+        const price = toNumber(item.price);
+        const qty = Math.max(1, Math.min(MAX_CART_ITEM_QTY, Math.floor(toNumber(item.qty || 1))));
+        const lineTotal = price * qty;
+
+        if (!id || !name || price <= 0 || lineTotal <= 0) return null;
+        return { id, name, price, qty, lineTotal };
+      })
+      .filter(Boolean);
+    const finalTotal = normalizedItems.reduce(
+      (sum, item) => sum + toNumber(item.lineTotal),
+      0
+    );
+
+    if (normalizedItems.length === 0 || finalTotal <= 0) {
+      alert("Please add valid items before placing order.");
+      return;
+    }
 
     const order = {
       id: orderId,
@@ -398,7 +503,7 @@ function CustomerMenuContent() {
       customerName: normalizedName,
       customerMobile: normalizedMobile,
       items: normalizedItems,
-      total: cartTotal,
+      total: finalTotal,
       status: "Pending",
       paymentStatus: "Paid",
       paymentMethod,
@@ -412,7 +517,7 @@ function CustomerMenuContent() {
       customerName: order.customerName,
       customerMobile: order.customerMobile,
       tableNo,
-      amount: cartTotal,
+      amount: finalTotal,
       paymentMethod,
       status: "success",
       timestamp: now.toISOString(),
@@ -436,7 +541,7 @@ function CustomerMenuContent() {
     setConfirmation({
       orderId,
       paymentId,
-      amount: cartTotal,
+      amount: finalTotal,
     });
     setCart([]);
     setCustomerName("");
@@ -575,6 +680,7 @@ function CustomerMenuContent() {
                 <input
                   type="text"
                   value={customerName}
+                  maxLength={MAX_CUSTOMER_NAME_LENGTH}
                   onChange={(e) => {
                     setCustomerName(e.target.value);
                     if (formErrors.customerName) {
@@ -618,7 +724,12 @@ function CustomerMenuContent() {
 
                 <select
                   value={paymentMethod}
-                  onChange={(e) => setPaymentMethod(e.target.value)}
+                  onChange={(e) => {
+                    const method = e.target.value;
+                    if (VALID_PAYMENT_METHODS.includes(method)) {
+                      setPaymentMethod(method);
+                    }
+                  }}
                   className="w-full rounded-lg border px-3 py-2 text-sm"
                 >
                   <option value="UPI">UPI</option>

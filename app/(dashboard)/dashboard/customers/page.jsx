@@ -1148,7 +1148,22 @@ const toNumber = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
-const normalizeText = (value) => String(value || "").trim();
+const normalizeText = (value, maxLength = 120) =>
+  String(value || "")
+    .trim()
+    .slice(0, maxLength);
+
+const normalizeMobile = (value) => {
+  const digits = String(value || "").replace(/\D/g, "").slice(0, 10);
+  return /^\d{10}$/.test(digits) ? digits : "-";
+};
+
+const normalizeStatus = (value) => {
+  const status = normalizeText(value, 20);
+  if (status === "Completed") return "Completed";
+  if (status === "Cancelled") return "Cancelled";
+  return "Pending";
+};
 
 const parseTime = (value) => {
   const parsed = new Date(value).getTime();
@@ -1200,9 +1215,10 @@ const deriveCustomersFromOrders = (orders) => {
   (Array.isArray(orders) ? orders : []).forEach((order) => {
     if (!order || typeof order !== "object") return;
 
-    const name = normalizeText(order.customerName) || "Walk-in";
-    const mobile =
-      normalizeText(order.customerMobile || order.mobile || order.phone) || "-";
+    const name = normalizeText(order.customerName, 80) || "Walk-in";
+    const mobile = normalizeMobile(
+      order.customerMobile || order.mobile || order.phone
+    );
     const key = `${name.toLowerCase()}|${mobile}`;
 
     if (!groupedCustomers.has(key)) {
@@ -1226,7 +1242,7 @@ const deriveCustomersFromOrders = (orders) => {
     const customer = groupedCustomers.get(key);
     const orderTotal = toNumber(order.total);
     const orderTime = parseTime(order.time);
-    const normalizedStatus = normalizeText(order.status) || "Pending";
+    const normalizedStatus = normalizeStatus(order.status);
     const items = Array.isArray(order.items) ? order.items : [];
 
     customer.visit += 1;
@@ -1253,14 +1269,14 @@ const deriveCustomersFromOrders = (orders) => {
 
     // Store recent order with first two items (for card display)
     customer.recentOrders.push({
-      id: normalizeText(order.id) || "-",
-      tableNo: normalizeText(order.tableNo) || "-",
+      id: normalizeText(order.id, 64) || "-",
+      tableNo: normalizeText(order.tableNo, 20) || "-",
       total: orderTotal,
       status: normalizedStatus,
       time: order.time,
       items: items.slice(0, 2).map((item) => ({
-        name: normalizeText(item.name),
-        qty: toNumber(item.qty || 1),
+        name: normalizeText(item?.name, 80) || "Item",
+        qty: Math.max(1, Math.min(99, Math.floor(toNumber(item?.qty || 1)))),
       })),
     });
   });
@@ -1584,10 +1600,10 @@ export default function Page() {
 
     return customers.filter(
       (customer) =>
-        customer.name.toLowerCase().includes(query) ||
-        customer.mobile.includes(search.trim()) ||
-        customer.food.toLowerCase().includes(query) ||
-        customer.status.toLowerCase().includes(query),
+        String(customer.name || "").toLowerCase().includes(query) ||
+        String(customer.mobile || "").includes(search.trim()) ||
+        String(customer.food || "").toLowerCase().includes(query) ||
+        String(customer.status || "").toLowerCase().includes(query),
     );
   }, [customers, search]);
 

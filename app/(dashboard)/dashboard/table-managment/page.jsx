@@ -80,6 +80,17 @@ const serializeMenuForHash = (items) =>
     })
     .join("|");
 
+const normalizeTableNumber = (value) => {
+  const digitsOnly = String(value || "")
+    .replace(/\D/g, "")
+    .trim();
+  if (!digitsOnly) return "";
+
+  const parsed = Number(digitsOnly);
+  if (!Number.isInteger(parsed) || parsed <= 0) return "";
+  return String(parsed);
+};
+
 export default function TablesPage() {
   const [tables, setTables] = useState(() => getTables());
   const [tableNo, setTableNo] = useState("");
@@ -154,9 +165,9 @@ export default function TablesPage() {
   };
 
   const addTable = () => {
-    const normalizedTable = tableNo.trim();
+    const normalizedTable = normalizeTableNumber(tableNo);
     if (!normalizedTable) {
-      toast.error("Enter table number");
+      toast.error("Enter valid numeric table number (example: 1, 2, 10)");
       return;
     }
 
@@ -166,7 +177,11 @@ export default function TablesPage() {
       return;
     }
 
-    if (tables.some((table) => table.tableNo === normalizedTable)) {
+    if (
+      tables.some(
+        (table) => normalizeTableNumber(table.tableNo) === normalizedTable
+      )
+    ) {
       toast.error("Table already exists");
       return;
     }
@@ -222,9 +237,13 @@ export default function TablesPage() {
           <div className="flex flex-col gap-3 md:flex-row">
             <input
               type="text"
-              placeholder="Enter table number (example: T1)"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              placeholder="Enter table number (example: 1)"
               value={tableNo}
-              onChange={(e) => setTableNo(e.target.value)}
+              onChange={(e) =>
+                setTableNo(e.target.value.replace(/\D/g, "").slice(0, 4))
+              }
               className="flex-1 rounded-lg border px-4 py-2"
             />
             <button

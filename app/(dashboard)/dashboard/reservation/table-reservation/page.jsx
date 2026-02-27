@@ -36,6 +36,69 @@ const getStatusClassName = (status) => {
   return "pending";
 };
 
+const DEFAULT_RESERVATIONS = [];
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const TIME_REGEX = /^([01]\d|2[0-3]):([0-5]\d)$/;
+
+const validateDateString = (value) => {
+  const dateString = String(value || "").trim();
+  if (!dateString) return "Date is required";
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(dateString)) {
+    return "Enter valid date format (YYYY-MM-DD)";
+  }
+
+  const [yearStr, monthStr, dayStr] = dateString.split("-");
+  const year = Number(yearStr);
+  const month = Number(monthStr);
+  const day = Number(dayStr);
+
+  if (yearStr.length !== 4 || year < 1000 || year > 9999) {
+    return "Year must be exactly 4 digits";
+  }
+  if (month < 1 || month > 12) {
+    return "Month must be between 01 and 12";
+  }
+  if (day < 1 || day > 31) {
+    return "Date must be between 01 and 31";
+  }
+
+  const parsed = new Date(`${dateString}T00:00:00`);
+  if (
+    Number.isNaN(parsed.getTime()) ||
+    parsed.getFullYear() !== year ||
+    parsed.getMonth() + 1 !== month ||
+    parsed.getDate() !== day
+  ) {
+    return "Entered date is not valid";
+  }
+
+  return "";
+};
+
+const validateReservationForm = (form) => {
+  const name = String(form.name || "").trim();
+  const mobile = String(form.mobile || "").trim();
+  const email = String(form.email || "").trim();
+  const time = String(form.time || "").trim();
+  const guests = Number(form.guests);
+  const notes = String(form.notes || "").trim();
+
+  if (!name || name.length < 2) return "Enter valid full name";
+  if (!/^\d{10}$/.test(mobile)) return "Mobile number must be 10 digits";
+  if (email && !EMAIL_REGEX.test(email)) return "Enter valid email address";
+
+  const dateError = validateDateString(form.date);
+  if (dateError) return dateError;
+
+  if (!TIME_REGEX.test(time)) return "Enter valid time (HH:MM, 24-hour)";
+  if (!Number.isInteger(guests) || guests < 1 || guests > 20) {
+    return "Guests must be between 1 and 20";
+  }
+  if (notes.length > 250) return "Notes must be under 250 characters";
+
+  return "";
+};
+
 // const DEFAULT_RESERVATIONS = [
 //   {
 //     id: "TR-1001",
@@ -123,21 +186,30 @@ export default function TableReservationPage() {
 
   // ================= SAVE / UPDATE =================
   const handleSave = () => {
-    const requiredFields = ["name", "mobile", "date", "time"];
-    const missingFields = requiredFields.filter((field) => !form[field].trim());
-
-    if (missingFields.length > 0) {
-      showNotification(`Please fill: ${missingFields.join(", ")}`, "error");
+    const validationError = validateReservationForm(form);
+    if (validationError) {
+      showNotification(validationError, "error");
       return;
     }
+
+    const normalizedForm = {
+      ...form,
+      name: String(form.name || "").trim(),
+      mobile: String(form.mobile || "").replace(/\D/g, "").slice(0, 10),
+      email: String(form.email || "").trim(),
+      date: String(form.date || "").trim(),
+      time: String(form.time || "").trim(),
+      guests: String(form.guests || "1"),
+      notes: String(form.notes || "").trim(),
+    };
 
     if (editId) {
       setData((prev) =>
         prev.map((d) =>
           d.id === editId
             ? {
-                ...d,
-                ...form,
+              ...d,
+                ...normalizedForm,
                 updatedAt: new Date().toISOString().split("T")[0],
               }
             : d,
@@ -148,7 +220,7 @@ export default function TableReservationPage() {
       const newId = `TR-${1000 + data.length + 1}`;
       const newReservation = {
         id: newId,
-        ...form,
+        ...normalizedForm,
         createdAt: new Date().toISOString().split("T")[0],
       };
 
@@ -181,7 +253,16 @@ export default function TableReservationPage() {
 
   // ================= ACTIONS =================
   const handleEdit = (row) => {
-    setForm(row);
+    setForm({
+      name: String(row?.name || ""),
+      mobile: String(row?.mobile || "").replace(/\D/g, "").slice(0, 10),
+      email: String(row?.email || ""),
+      date: String(row?.date || ""),
+      time: String(row?.time || ""),
+      guests: String(row?.guests || "2"),
+      status: String(row?.status || "Confirmed"),
+      notes: String(row?.notes || ""),
+    });
     setEditId(row.id);
     setShowModal(true);
   };
@@ -228,11 +309,15 @@ export default function TableReservationPage() {
 
   // ================= FILTER & SEARCH =================
   const filteredData = data.filter((d) => {
+    const name = String(d.name || "").toLowerCase();
+    const mobile = String(d.mobile || "");
+    const email = String(d.email || "").toLowerCase();
+    const id = String(d.id || "").toLowerCase();
     const matchesSearch =
-      d.name.toLowerCase().includes(search.toLowerCase()) ||
-      d.mobile.includes(search) ||
-      d.email.toLowerCase().includes(search.toLowerCase()) ||
-      d.id.toLowerCase().includes(search.toLowerCase());
+      name.includes(search.toLowerCase()) ||
+      mobile.includes(search) ||
+      email.includes(search.toLowerCase()) ||
+      id.includes(search.toLowerCase());
 
     const matchesStatus = filterStatus === "all" || d.status === filterStatus;
 
@@ -818,6 +903,7 @@ export default function TableReservationPage() {
                       onChange={(e) =>
                         setForm({ ...form, name: e.target.value })
                       }
+                      maxLength={60}
                       className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                     />
                   </div>
@@ -831,8 +917,13 @@ export default function TableReservationPage() {
                       placeholder="9876543210"
                       value={form.mobile}
                       onChange={(e) =>
-                        setForm({ ...form, mobile: e.target.value })
+                        setForm({
+                          ...form,
+                          mobile: e.target.value.replace(/\D/g, "").slice(0, 10),
+                        })
                       }
+                      inputMode="numeric"
+                      maxLength={10}
                       className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                     />
                   </div>
@@ -846,8 +937,9 @@ export default function TableReservationPage() {
                       placeholder="swadpoint@example.com"
                       value={form.email}
                       onChange={(e) =>
-                        setForm({ ...form, email: e.target.value })
+                        setForm({ ...form, email: e.target.value.trimStart() })
                       }
+                      maxLength={120}
                       className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                     />
                   </div>
@@ -879,6 +971,8 @@ export default function TableReservationPage() {
                       onChange={(e) =>
                         setForm({ ...form, date: e.target.value })
                       }
+                      min="1000-01-01"
+                      max="9999-12-31"
                       className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                     />
                   </div>
@@ -933,6 +1027,7 @@ export default function TableReservationPage() {
                       setForm({ ...form, notes: e.target.value })
                     }
                     rows="3"
+                    maxLength={250}
                     className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
                   />
                 </div>

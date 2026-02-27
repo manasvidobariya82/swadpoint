@@ -3,7 +3,112 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useEffect } from "react";
+import { useMemo, useState } from "react";
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const USERNAME_REGEX = /^[a-zA-Z0-9_]+$/;
+const SPECIAL_CHAR_REGEX = /[@$!%*?&]/;
+
+const getStoredUsers = () => {
+  if (typeof window === "undefined") return [];
+
+  try {
+    const raw = localStorage.getItem("users");
+    const parsed = JSON.parse(raw || "[]");
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
+
+const validateField = (name, value, formData, users) => {
+  const normalizedUsers = Array.isArray(users) ? users : [];
+  const username = String(formData.username || "").trim();
+  const email = String(formData.email || "").trim();
+  const password = String(formData.password || "");
+  const confirmPassword = String(formData.confirmPassword || "");
+
+  switch (name) {
+    case "username": {
+      if (!username) return "Username is required";
+      if (username.length < 3) return "Username must be at least 3 characters";
+      if (username.length > 30) return "Username must be less than 30 characters";
+      if (!USERNAME_REGEX.test(username)) {
+        return "Username can contain only letters, numbers, and underscore";
+      }
+
+      const exists = normalizedUsers.some(
+        (u) =>
+          String(u?.username || "").trim().toLowerCase() ===
+          username.toLowerCase()
+      );
+      if (exists) return "Username already exists";
+      return "";
+    }
+
+    case "email": {
+      if (!email) return "Email is required";
+      if (!EMAIL_REGEX.test(email)) return "Please enter a valid email address";
+      if (email.length > 120) return "Email is too long";
+
+      const exists = normalizedUsers.some(
+        (u) =>
+          String(u?.email || "").trim().toLowerCase() === email.toLowerCase()
+      );
+      if (exists) return "Email already registered";
+      return "";
+    }
+
+    case "password": {
+      if (!password.trim()) return "Password is required";
+      if (password.length < 8) return "Password must be at least 8 characters";
+      if (password.length > 64) return "Password must be less than 64 characters";
+      if (!/[A-Z]/.test(password)) {
+        return "Password must contain at least one uppercase letter";
+      }
+      if (!/[a-z]/.test(password)) {
+        return "Password must contain at least one lowercase letter";
+      }
+      if (!/\d/.test(password)) return "Password must contain at least one number";
+      if (!SPECIAL_CHAR_REGEX.test(password)) {
+        return "Password must contain at least one special character (@$!%*?&)";
+      }
+      return "";
+    }
+
+    case "confirmPassword": {
+      if (!confirmPassword.trim()) return "Please confirm your password";
+      if (password !== confirmPassword) return "Passwords do not match";
+      return "";
+    }
+
+    case "agreeTerms": {
+      if (!formData.agreeTerms) {
+        return "You must agree to the terms and conditions";
+      }
+      return "";
+    }
+
+    default:
+      return "";
+  }
+};
+
+const validateAllFields = (formData) => {
+  const users = getStoredUsers();
+  return {
+    username: validateField("username", formData.username, formData, users),
+    email: validateField("email", formData.email, formData, users),
+    password: validateField("password", formData.password, formData, users),
+    confirmPassword: validateField(
+      "confirmPassword",
+      formData.confirmPassword,
+      formData,
+      users
+    ),
+    agreeTerms: validateField("agreeTerms", formData.agreeTerms, formData, users),
+  };
+};
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -32,145 +137,63 @@ export default function RegisterPage() {
     agreeTerms: false,
   });
 
-  const [isFormValid, setIsFormValid] = useState(false);
-
-  // Check form validity whenever form data changes
-  useEffect(() => {
-    const validateForm = () => {
-      // Check all required fields are filled
-      if (
-        !formData.username.trim() ||
-        !formData.email.trim() ||
-        !formData.password.trim() ||
-        !formData.confirmPassword.trim() ||
-        !formData.agreeTerms
-      ) {
-        return false;
-      }
-
-      // Validate username
-      if (formData.username.length < 3) {
-        return false;
-      }
-
-      // Validate email format
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(formData.email)) {
-        return false;
-      }
-
-      // Validate password
-      if (formData.password.length < 8) {
-        return false;
-      }
-
-      // Check password requirements
-      const hasUppercase = /[A-Z]/.test(formData.password);
-      const hasLowercase = /[a-z]/.test(formData.password);
-      const hasNumber = /\d/.test(formData.password);
-      const hasSpecialChar = /[@$!%*?&]/.test(formData.password);
-
-      if (!hasUppercase || !hasLowercase || !hasNumber || !hasSpecialChar) {
-        return false;
-      }
-
-      // Check passwords match
-      if (formData.password !== formData.confirmPassword) {
-        return false;
-      }
-
-      return true;
-    };
-
-    setIsFormValid(validateForm());
+  const isFormValid = useMemo(() => {
+    const validationResult = validateAllFields(formData);
+    return Object.values(validationResult).every((errorMessage) => !errorMessage);
   }, [formData]);
 
   // Handle input changes
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
-    setFormData((prev) => ({
-      ...prev,
+    const nextFormData = {
+      ...formData,
       [name]: type === "checkbox" ? checked : value,
-    }));
+    };
 
-    // Clear error when user starts typing
-    if (errors[name]) {
+    setFormData(nextFormData);
+
+    if (touched[name]) {
+      const users = getStoredUsers();
+      const fieldError = validateField(name, nextFormData[name], nextFormData, users);
+      setErrors((prev) => ({
+        ...prev,
+        [name]: fieldError,
+      }));
+    } else if (errors[name]) {
       setErrors((prev) => ({
         ...prev,
         [name]: "",
+      }));
+    }
+
+    if (name === "password" && touched.confirmPassword) {
+      const users = getStoredUsers();
+      const confirmError = validateField(
+        "confirmPassword",
+        nextFormData.confirmPassword,
+        nextFormData,
+        users
+      );
+      setErrors((prev) => ({
+        ...prev,
+        confirmPassword: confirmError,
       }));
     }
   };
 
   // Handle field blur (when user leaves a field)
   const handleBlur = (e) => {
-    const { name, value } = e.target;
+    const { name } = e.target;
     setTouched((prev) => ({
       ...prev,
       [name]: true,
     }));
 
-    // Validate individual field on blur
-    let error = "";
-
-    switch (name) {
-      case "username":
-        if (!value.trim()) {
-          error = "Username is required";
-        } else if (value.length < 3) {
-          error = "Username must be at least 3 characters";
-        }
-        break;
-
-      case "email":
-        if (!value.trim()) {
-          error = "Email is required";
-        } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) {
-          error = "Please enter a valid email address";
-        }
-        break;
-
-      case "password":
-        if (!value.trim()) {
-          error = "Password is required";
-        } else if (value.length < 8) {
-          error = "Password must be at least 8 characters";
-        } else {
-          const hasUppercase = /[A-Z]/.test(value);
-          const hasLowercase = /[a-z]/.test(value);
-          const hasNumber = /\d/.test(value);
-          const hasSpecialChar = /[@$!%*?&]/.test(value);
-
-          if (!hasUppercase)
-            error = "Password must contain at least one uppercase letter";
-          else if (!hasLowercase)
-            error = "Password must contain at least one lowercase letter";
-          else if (!hasNumber)
-            error = "Password must contain at least one number";
-          else if (!hasSpecialChar)
-            error =
-              "Password must contain at least one special character (@$!%*?&)";
-        }
-        break;
-
-      case "confirmPassword":
-        if (!value.trim()) {
-          error = "Please confirm your password";
-        } else if (formData.password !== value) {
-          error = "Passwords do not match";
-        }
-        break;
-
-      case "agreeTerms":
-        if (!formData.agreeTerms) {
-          error = "You must agree to the terms and conditions";
-        }
-        break;
-    }
-
+    const users = getStoredUsers();
+    const fieldError = validateField(name, formData[name], formData, users);
     setErrors((prev) => ({
       ...prev,
-      [name]: error,
+      [name]: fieldError,
     }));
   };
 
@@ -178,21 +201,48 @@ export default function RegisterPage() {
   const handleSubmit = (e) => {
     e.preventDefault();
 
-    if (!isFormValid) return;
+    const nextTouched = {
+      username: true,
+      email: true,
+      password: true,
+      confirmPassword: true,
+      agreeTerms: true,
+    };
+    setTouched(nextTouched);
 
-    const users = JSON.parse(localStorage.getItem("users")) || [];
+    const validationResult = validateAllFields(formData);
+    setErrors(validationResult);
 
-    // Check if username already exists
-    const userExists = users.find((u) => u.username === formData.username);
+    const hasErrors = Object.values(validationResult).some(
+      (errorMessage) => Boolean(errorMessage)
+    );
+    if (hasErrors) return;
 
-    if (userExists) {
-      alert("User already exists. Please login.");
+    const users = getStoredUsers();
+
+    // Defensive re-check before write
+    const usernameExists = users.some(
+      (u) =>
+        String(u?.username || "").trim().toLowerCase() ===
+        String(formData.username || "").trim().toLowerCase()
+    );
+    const emailExists = users.some(
+      (u) =>
+        String(u?.email || "").trim().toLowerCase() ===
+        String(formData.email || "").trim().toLowerCase()
+    );
+    if (usernameExists || emailExists) {
+      setErrors((prev) => ({
+        ...prev,
+        username: usernameExists ? "Username already exists" : prev.username,
+        email: emailExists ? "Email already registered" : prev.email,
+      }));
       return;
     }
 
     const newUser = {
-      username: formData.username,
-      email: formData.email,
+      username: formData.username.trim(),
+      email: formData.email.trim(),
       password: formData.password,
     };
 

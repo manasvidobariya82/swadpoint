@@ -4,6 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { downloadInvoice, printInvoice } from "@/helper/invoice";
 import { getOrders, saveOrders } from "@/helper/storage";
 
+const ORDER_STATUSES = ["Pending", "Completed", "Cancelled"];
+const PAYMENT_METHODS = ["UPI", "Cash", "Card"];
+const PAYMENT_STATUSES = ["Paid", "Pending", "Unpaid", "Failed"];
+
 const fetchOrdersFromApi = async () => {
   const response = await fetch("/api/orders", { cache: "no-store" });
   if (!response.ok) throw new Error("Failed to fetch orders");
@@ -25,6 +29,11 @@ const toNumber = (value) => {
   return Number.isFinite(parsed) ? parsed : 0;
 };
 
+const normalizeText = (value, maxLength = 120) =>
+  String(value || "")
+    .trim()
+    .slice(0, maxLength);
+
 const toTimestamp = (value) => {
   const parsed = new Date(value).getTime();
   return Number.isFinite(parsed) ? parsed : 0;
@@ -32,21 +41,95 @@ const toTimestamp = (value) => {
 
 const normalizeId = (value) => String(value || "").trim();
 
+const normalizeMobile = (value) => {
+  const digits = String(value || "").replace(/\D/g, "").slice(0, 10);
+  return /^\d{10}$/.test(digits) ? digits : "-";
+};
+
+const normalizeOrderStatus = (value) =>
+  ORDER_STATUSES.includes(value) ? value : "Pending";
+
+const normalizePaymentMethod = (value) =>
+  PAYMENT_METHODS.includes(value) ? value : "UPI";
+
+const normalizePaymentStatus = (value) =>
+  PAYMENT_STATUSES.includes(value) ? value : "Paid";
+
+const formatDateTime = (value) => {
+  const timestamp = toTimestamp(value);
+  if (!timestamp) return "-";
+  return new Date(timestamp).toLocaleString();
+};
+
+const sanitizeOrderItem = (item, index) => {
+  if (!item || typeof item !== "object") return null;
+
+  const name = normalizeText(item.name, 80);
+  const qty = Math.max(1, Math.min(99, Math.floor(toNumber(item.qty || 1))));
+  const price = Math.max(0, toNumber(item.price));
+  const lineTotalInput = toNumber(item.lineTotal);
+  const lineTotal = lineTotalInput > 0 ? lineTotalInput : price * qty;
+
+  if (!name || lineTotal <= 0) return null;
+
+  return {
+    id: normalizeText(item.id, 64) || `item-${index}`,
+    name,
+    qty,
+    price,
+    lineTotal,
+  };
+};
+
+const sanitizeOrder = (order) => {
+  if (!order || typeof order !== "object") return null;
+
+  const id = normalizeId(order.id);
+  if (!id) return null;
+
+  const items = (Array.isArray(order.items) ? order.items : [])
+    .map((item, index) => sanitizeOrderItem(item, index))
+    .filter(Boolean);
+
+  const totalFromItems = items.reduce(
+    (sum, item) => sum + toNumber(item.lineTotal),
+    0
+  );
+  const total = Math.max(toNumber(order.total), totalFromItems);
+
+  return {
+    ...order,
+    id,
+    tableNo: normalizeText(order.tableNo, 20) || "NA",
+    customerName: normalizeText(order.customerName, 80) || "Walk-in",
+    customerMobile: normalizeMobile(order.customerMobile || order.mobile || order.phone),
+    status: normalizeOrderStatus(normalizeText(order.status, 20)),
+    paymentMethod: normalizePaymentMethod(normalizeText(order.paymentMethod, 20)),
+    paymentStatus: normalizePaymentStatus(normalizeText(order.paymentStatus, 20)),
+    paymentId: normalizeText(order.paymentId, 64) || "-",
+    time: toTimestamp(order.time) ? new Date(order.time).toISOString() : new Date().toISOString(),
+    items,
+    total,
+  };
+};
+
 const mergeOrders = (current, incoming) => {
   const mergedById = new Map();
 
   (Array.isArray(current) ? current : []).forEach((order) => {
-    const id = normalizeId(order?.id);
+    const normalized = sanitizeOrder(order);
+    const id = normalizeId(normalized?.id);
     if (!id) return;
-    mergedById.set(id, order);
+    mergedById.set(id, normalized);
   });
 
   (Array.isArray(incoming) ? incoming : []).forEach((order) => {
-    const id = normalizeId(order?.id);
+    const normalized = sanitizeOrder(order);
+    const id = normalizeId(normalized?.id);
     if (!id) return;
     mergedById.set(id, {
       ...(mergedById.get(id) || {}),
-      ...order,
+      ...normalized,
     });
   });
 
@@ -56,25 +139,26 @@ const mergeOrders = (current, incoming) => {
 };
 
 const buildInvoiceFromOrder = (order) => {
-  const items = Array.isArray(order?.items) ? order.items : [];
+  const normalizedOrder = sanitizeOrder(order) || {};
+  const items = Array.isArray(normalizedOrder?.items) ? normalizedOrder.items : [];
   const totalFromItems = items.reduce(
     (sum, item) => sum + toNumber(item?.lineTotal || toNumber(item?.price) * toNumber(item?.qty || 1)),
     0
   );
-  const totalAmount = toNumber(order?.total || totalFromItems);
-  const invoiceId = `INV-${String(order?.id || Date.now()).replace(/[^\w-]/g, "")}`;
+  const totalAmount = toNumber(normalizedOrder?.total || totalFromItems);
+  const invoiceId = `INV-${String(normalizedOrder?.id || Date.now()).replace(/[^\w-]/g, "")}`;
 
   return {
     invoiceId,
-    orderId: order?.id || "-",
-    paymentId: order?.paymentId || "-",
-    issuedAt: order?.time || new Date().toISOString(),
-    tableNo: order?.tableNo || "NA",
-    customerName: order?.customerName || "Walk-in",
-    customerMobile: order?.customerMobile || "-",
-    paymentMethod: order?.paymentMethod || "-",
-    paymentStatus: order?.paymentStatus || "-",
-    orderStatus: order?.status || "-",
+    orderId: normalizedOrder?.id || "-",
+    paymentId: normalizedOrder?.paymentId || "-",
+    issuedAt: normalizedOrder?.time || new Date().toISOString(),
+    tableNo: normalizedOrder?.tableNo || "NA",
+    customerName: normalizedOrder?.customerName || "Walk-in",
+    customerMobile: normalizedOrder?.customerMobile || "-",
+    paymentMethod: normalizedOrder?.paymentMethod || "-",
+    paymentStatus: normalizedOrder?.paymentStatus || "-",
+    orderStatus: normalizedOrder?.status || "-",
     totalAmount,
     items: items.map((item) => {
       const qty = Math.max(1, toNumber(item?.qty || 1));
@@ -91,7 +175,7 @@ const buildInvoiceFromOrder = (order) => {
 };
 
 export default function OrdersPage() {
-  const [orders, setOrders] = useState(() => getOrders());
+  const [orders, setOrders] = useState(() => mergeOrders([], getOrders()));
   const [loading, setLoading] = useState(true);
   const [actionLoadingId, setActionLoadingId] = useState("");
 
@@ -106,7 +190,7 @@ export default function OrdersPage() {
     } catch {
       const cached = getOrders();
       if (cached.length > 0) {
-        setOrders(cached);
+        setOrders(mergeOrders([], cached));
       }
     } finally {
       setLoading(false);
@@ -135,9 +219,15 @@ export default function OrdersPage() {
 
   const markCompleted = async (id) => {
     if (actionLoadingId) return;
+    const normalizedId = normalizeId(id);
+    if (!normalizedId) return;
+
+    const targetOrder = orders.find((order) => order.id === normalizedId);
+    if (!targetOrder || targetOrder.status === "Completed") return;
+
     try {
-      setActionLoadingId(id);
-      await updateOrderStatus(id, "Completed");
+      setActionLoadingId(normalizedId);
+      await updateOrderStatus(normalizedId, "Completed");
       await loadOrders();
     } finally {
       setActionLoadingId("");
@@ -202,7 +292,7 @@ export default function OrdersPage() {
                     Table {order.tableNo || "NA"} | {order.customerName || "Walk-in"}
                   </p>
                   <p className="text-xs text-gray-500">
-                    {new Date(order.time).toLocaleString()}
+                    {formatDateTime(order.time)}
                   </p>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -233,16 +323,16 @@ export default function OrdersPage() {
                       key={`${order.id}-${index}`}
                       className="grid gap-1 px-3 py-2 text-sm text-gray-700 sm:grid-cols-12 sm:items-center"
                     >
-                      <p className="sm:col-span-7">{item.name}</p>
-                      <p className="sm:col-span-2 sm:text-center">x{item.qty || 1}</p>
+                      <p className="sm:col-span-7">{item.name || "Item"}</p>
+                      <p className="sm:col-span-2 sm:text-center">x{Math.max(1, toNumber(item.qty || 1))}</p>
                       <p className="font-medium sm:col-span-3 sm:text-right">
-                        Rs. {Number(item.lineTotal ?? item.price ?? 0).toFixed(2)}
+                        Rs. {toNumber(item.lineTotal ?? item.price ?? 0).toFixed(2)}
                       </p>
                     </div>
                   ))}
                 </div>
                 <div className="border-t px-3 py-2 text-right text-sm font-semibold text-gray-900">
-                  Total: Rs. {Number(order.total || 0).toFixed(2)}
+                  Total: Rs. {toNumber(order.total || 0).toFixed(2)}
                 </div>
               </div>
 

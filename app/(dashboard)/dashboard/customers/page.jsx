@@ -1634,10 +1634,15 @@ export default function Page() {
     if (isSyncing) return;
 
     setIsSyncing(true);
+    const syncReleaseTimeout = window.setTimeout(() => {
+      setIsSyncing(false);
+    }, 10000);
+
     try {
-      await refresh();
+      await Promise.resolve(refresh());
       setLastSyncedAt(formatTime(Date.now()));
     } finally {
+      window.clearTimeout(syncReleaseTimeout);
       setIsSyncing(false);
     }
   };
@@ -1762,11 +1767,15 @@ export default function Page() {
             </button>
             <button
               type="button"
-              onClick={handleSyncNow}
-              disabled={isSyncing}
-              className="rounded-lg bg-black px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-60"
+              onClick={() => {
+                void handleSyncNow();
+              }}
+              aria-disabled={isSyncing}
+              className={`rounded-lg bg-black px-4 py-2 text-sm font-medium text-white transition active:scale-[0.98] ${
+                isSyncing ? "cursor-wait opacity-80" : "cursor-pointer hover:bg-gray-800"
+              }`}
             >
-              {isSyncing ? "Syncing..." : "Sync Now"}
+              {isSyncing ? "Syncing..." : "Sync Orders"}
             </button>
           </div>
         </div>

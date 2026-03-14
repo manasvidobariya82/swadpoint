@@ -51,13 +51,20 @@ export default function Header({ isAuthenticated = false, user }) {
     return "A";
   };
 
-  const handleLogout = () => {
-    // Clear localStorage
+  const handleLogout = async () => {
+    try {
+      await fetch("/api/auth/logout", {
+        method: "POST",
+      });
+    } catch {
+      // Continue logout flow even if request fails.
+    }
+
+    localStorage.removeItem("currentUser");
     localStorage.removeItem("user");
     localStorage.removeItem("username");
-
-    // Redirect to login
     router.push("/login");
+    router.refresh();
   };
 
   return (

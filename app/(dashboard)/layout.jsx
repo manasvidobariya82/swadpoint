@@ -11,22 +11,52 @@ export default function DashboardLayout({ children }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    const rawUser = localStorage.getItem("currentUser");
+    let cancelled = false;
 
-    if (!rawUser) {
-      setReady(true);
-      router.replace("/login");
-      return;
-    }
+    const loadSession = async () => {
+      try {
+        const response = await fetch("/api/auth/session", {
+          method: "GET",
+          cache: "no-store",
+        });
 
-    try {
-      setUser(JSON.parse(rawUser));
-    } catch {
-      setUser(null);
-      router.replace("/login");
-    } finally {
-      setReady(true);
-    }
+        if (!response.ok) {
+          if (!cancelled) {
+            setUser(null);
+            router.replace("/login");
+          }
+          return;
+        }
+
+        const data = await response.json();
+        if (!data?.user) {
+          if (!cancelled) {
+            setUser(null);
+            router.replace("/login");
+          }
+          return;
+        }
+
+        if (!cancelled) {
+          setUser(data.user);
+        }
+      } catch {
+        if (!cancelled) {
+          setUser(null);
+          router.replace("/login");
+        }
+      } finally {
+        if (!cancelled) {
+          setReady(true);
+        }
+      }
+    };
+
+    loadSession();
+
+    return () => {
+      cancelled = true;
+    };
   }, [router]);
 
   if (!ready) {

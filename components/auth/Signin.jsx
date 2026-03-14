@@ -9,17 +9,7 @@ const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const USERNAME_REGEX = /^[a-zA-Z0-9_]+$/;
 const SPECIAL_CHAR_REGEX = /[@$!%*?&]/;
 
-const getStoredUsers = () => {
-  if (typeof window === "undefined") return [];
-
-  try {
-    const raw = localStorage.getItem("users");
-    const parsed = JSON.parse(raw || "[]");
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-};
+const getStoredUsers = () => [];
 
 const validateField = (name, value, formData, users) => {
   const normalizedUsers = Array.isArray(users) ? users : [];
@@ -136,6 +126,8 @@ export default function RegisterPage() {
     confirmPassword: false,
     agreeTerms: false,
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
 
   const isFormValid = useMemo(() => {
     const validationResult = validateAllFields(formData);
@@ -151,6 +143,9 @@ export default function RegisterPage() {
     };
 
     setFormData(nextFormData);
+    if (submitError) {
+      setSubmitError("");
+    }
 
     if (touched[name]) {
       const users = getStoredUsers();
@@ -198,7 +193,7 @@ export default function RegisterPage() {
   };
 
   // Handle form submission
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     const nextTouched = {
@@ -218,49 +213,43 @@ export default function RegisterPage() {
     );
     if (hasErrors) return;
 
-    const users = getStoredUsers();
+    setSubmitError("");
+    setIsSubmitting(true);
 
-    // Defensive re-check before write
-    const usernameExists = users.some(
-      (u) =>
-        String(u?.username || "").trim().toLowerCase() ===
-        String(formData.username || "").trim().toLowerCase()
-    );
-    const emailExists = users.some(
-      (u) =>
-        String(u?.email || "").trim().toLowerCase() ===
-        String(formData.email || "").trim().toLowerCase()
-    );
-    if (usernameExists || emailExists) {
-      setErrors((prev) => ({
-        ...prev,
-        username: usernameExists ? "Username already exists" : prev.username,
-        email: emailExists ? "Email already registered" : prev.email,
-      }));
-      return;
+    try {
+      const response = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          username: formData.username,
+          email: formData.email,
+          password: formData.password,
+        }),
+      });
+
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        const message = data?.error || "Failed to create account";
+        setSubmitError(message);
+        if (/username/i.test(message) || /email/i.test(message)) {
+          setErrors((prev) => ({
+            ...prev,
+            username: /username/i.test(message) ? message : prev.username,
+            email: /email/i.test(message) ? message : prev.email,
+          }));
+        }
+        return;
+      }
+
+      router.push("/dashboard");
+      router.refresh();
+    } catch {
+      setSubmitError("Unable to create account right now. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
-
-    const newUser = {
-      username: formData.username.trim(),
-      email: formData.email.trim(),
-      password: formData.password,
-    };
-
-    users.push(newUser);
-
-    localStorage.setItem("users", JSON.stringify(users));
-
-    // Save logged-in user
-    localStorage.setItem(
-      "currentUser",
-      JSON.stringify({
-        username: newUser.username,
-        email: newUser.email,
-        isAuthenticated: true,
-      })
-    );
-
-    router.push("/dashboard");
   };
 
   // Password strength calculator
@@ -553,15 +542,16 @@ export default function RegisterPage() {
           </div>
 
           {/* Register Button */}
+          {submitError && <div style={styles.errorText}>{submitError}</div>}
           <button
             type="submit"
             style={{
               ...styles.registerButton,
-              ...(!isFormValid ? styles.buttonDisabled : {}),
+              ...(!isFormValid || isSubmitting ? styles.buttonDisabled : {}),
             }}
-            disabled={!isFormValid}
+            disabled={!isFormValid || isSubmitting}
           >
-            Create Account
+            {isSubmitting ? "Creating Account..." : "Create Account"}
           </button>
 
           {/* Quick test button (remove in production) */}
@@ -599,21 +589,7 @@ export default function RegisterPage() {
           <button
             type="button"
             onClick={() => {
-              console.log("Google sign up clicked");
-              // ✅ Store test user for social sign up
-              localStorage.setItem(
-                "user",
-                JSON.stringify({
-                  username: "socialuser",
-                  email: "social@example.com",
-                  name: "Social User",
-                  isAuthenticated: true,
-                  registrationTime: new Date().toISOString(),
-                  accountType: "social_google",
-                })
-              );
-              localStorage.setItem("username", "socialuser");
-              router.push("/dashboard");
+              setSubmitError("Google signup is not configured yet.");
             }}
             style={styles.socialButton}
           >
@@ -642,21 +618,7 @@ export default function RegisterPage() {
           <button
             type="button"
             onClick={() => {
-              console.log("Facebook sign up clicked");
-              // ✅ Store test user for social sign up
-              localStorage.setItem(
-                "user",
-                JSON.stringify({
-                  username: "socialuser",
-                  email: "social@example.com",
-                  name: "Social User",
-                  isAuthenticated: true,
-                  registrationTime: new Date().toISOString(),
-                  accountType: "social_facebook",
-                })
-              );
-              localStorage.setItem("username", "socialuser");
-              router.push("/dashboard");
+              setSubmitError("Facebook signup is not configured yet.");
             }}
             style={styles.socialButton}
           >
@@ -932,3 +894,4 @@ const styles = {
     textDecoration: "none",
   },
 };
+

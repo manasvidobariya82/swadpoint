@@ -11,6 +11,8 @@ export default function LoginPage() {
     username: "",
     password: "",
   });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   const [errors, setErrors] = useState({
     username: "",
     password: "",
@@ -79,6 +81,9 @@ export default function LoginPage() {
       ...prev,
       [name]: value,
     }));
+    if (submitError) {
+      setSubmitError("");
+    }
 
     // Clear error when user starts typing
     if (errors[name]) {
@@ -97,41 +102,39 @@ export default function LoginPage() {
     }));
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     if (!validateForm()) return;
 
-    const users = JSON.parse(localStorage.getItem("users")) || [];
+    setSubmitError("");
+    setIsSubmitting(true);
 
-    // Find user by username OR email
-    const foundUser = users.find(
-      (u) => u.username === formData.username || u.email === formData.username
-    );
+    try {
+      const response = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          identifier: formData.username,
+          password: formData.password,
+        }),
+      });
 
-    // ❌ User not found
-    if (!foundUser) {
-      alert("User not found. Please sign up first.");
-      return;
+      const data = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setSubmitError(data?.error || "Login failed");
+        return;
+      }
+
+      router.push("/dashboard");
+      router.refresh();
+    } catch {
+      setSubmitError("Unable to login right now. Please try again.");
+    } finally {
+      setIsSubmitting(false);
     }
-
-    // ❌ Password mismatch
-    if (foundUser.password !== formData.password) {
-      alert("Incorrect password");
-      return;
-    }
-
-    // ✅ Login success
-    localStorage.setItem(
-      "currentUser",
-      JSON.stringify({
-        username: foundUser.username,
-        email: foundUser.email,
-        isAuthenticated: true,
-      })
-    );
-
-    router.push("/dashboard");
   };
 
   // Real-time password validation for visual feedback
@@ -307,12 +310,13 @@ export default function LoginPage() {
           </div>
 
           {/* Login Button */}
+          {submitError && <div style={styles.errorText}>{submitError}</div>}
           <button
             type="submit"
             style={styles.loginButton}
-            disabled={!formData.username || !formData.password}
+            disabled={!formData.username || !formData.password || isSubmitting}
           >
-            Login
+            {isSubmitting ? "Logging in..." : "Login"}
           </button>
         </form>
 
@@ -326,7 +330,7 @@ export default function LoginPage() {
         <div style={styles.socialButtons}>
           <button
             type="button"
-            onClick={() => router.push("/dashboard")}
+            onClick={() => setSubmitError("Google login is not configured yet.")}
             style={styles.socialButton}
           >
             <svg style={styles.googleIcon} viewBox="0 0 24 24">
@@ -352,7 +356,7 @@ export default function LoginPage() {
 
           <button
             type="button"
-            onClick={() => router.push("/dashboard")}
+            onClick={() => setSubmitError("Facebook login is not configured yet.")}
             style={styles.socialButton}
           >
             <svg style={styles.facebookIcon} viewBox="0 0 24 24">
@@ -627,3 +631,4 @@ const styles = {
     textDecoration: "none",
   },
 };
+

@@ -1,9 +1,7 @@
-import { NextResponse } from "next/server";
-import {
-  addOrderToStore,
-  getOrdersFromStore,
-  updateOrderInStore,
-} from "@/lib/server-store";
+﻿import { NextResponse } from "next/server";
+import pool from "@/lib/db";
+
+export const runtime = "nodejs";
 
 const ORDER_STATUSES = ["Pending", "Preparing", "Completed", "Cancelled"];
 const PAYMENT_METHODS = ["UPI", "Cash", "Card"];
@@ -65,7 +63,7 @@ const sanitizeOrderItem = (item) => {
   if (!name || lineTotal <= 0) return null;
 
   return {
-    id: sanitizeText(item.id, 64) || undefined,
+    id: Number.isFinite(Number(item.id)) ? Number(item.id) : null,
     name,
     qty,
     price,
@@ -79,8 +77,7 @@ const sanitizeOrderPayload = (payload, options = {}) => {
     return { error: "Order payload must be an object" };
   }
 
-  const id = sanitizeText(payload.id, 64);
-  if (!id) return { error: "Order id is required" };
+  const id = sanitizeText(payload.id, 64) || `ORD-${Date.now()}`;
 
   const items = (Array.isArray(payload.items) ? payload.items : [])
     .map((item) => sanitizeOrderItem(item))
@@ -114,52 +111,182 @@ const sanitizeOrderPayload = (payload, options = {}) => {
     invoiceId: sanitizeText(payload.invoiceId, 64),
     invoiceGeneratedAt: payload.invoiceGeneratedAt
       ? normalizeDate(payload.invoiceGeneratedAt)
-      : "",
-    completedAt: payload.completedAt ? normalizeDate(payload.completedAt) : "",
+      : null,
+    completedAt: payload.completedAt ? normalizeDate(payload.completedAt) : null,
     paymentTransferred: normalizeBoolean(payload.paymentTransferred),
     paymentTransferredAt: payload.paymentTransferredAt
       ? normalizeDate(payload.paymentTransferredAt)
-      : "",
+      : null,
   };
 
   return { order };
 };
 
-const sortByLatest = (orders) =>
-  [...orders].sort(
-    (a, b) => new Date(b?.time || 0).getTime() - new Date(a?.time || 0).getTime()
-  );
+const toApiOrder = (orderRow, itemRows) => ({
+  id: orderRow.id,
+  tableNo: orderRow.table_no || "NA",
+  customerName: orderRow.customer_name || "Walk-in",
+  customerMobile: orderRow.customer_mobile || "-",
+  items: itemRows,
+  total: Number(orderRow.total || 0),
+  status: orderRow.status || "Pending",
+  paymentStatus: orderRow.payment_status || "Pending",
+  paymentMethod: orderRow.payment_method || "UPI",
+  paymentId: orderRow.payment_id || "-",
+  time: orderRow.order_time || orderRow.created_at,
+  invoiceId: orderRow.invoice_id || "",
+  invoiceGeneratedAt: orderRow.invoice_generated_at || "",
+  completedAt: orderRow.completed_at || "",
+  paymentTransferred: Boolean(orderRow.payment_transferred),
+  paymentTransferredAt: orderRow.payment_transferred_at || "",
+});
 
 export async function GET() {
   try {
-    const orders = await getOrdersFromStore();
-    const normalized = (Array.isArray(orders) ? orders : [])
-      .map((order) => sanitizeOrderPayload(order).order)
-      .filter(Boolean);
-    return NextResponse.json(sortByLatest(normalized));
-  } catch {
-    return NextResponse.json(
-      { error: "Failed to fetch orders" },
-      { status: 500 }
+    const ordersResult = await pool.query(
+      `SELECT id, table_no, customer_name, customer_mobile, total, status,
+              payment_status, payment_method, payment_id, invoice_id,
+              invoice_generated_at, completed_at, payment_transferred,
+              payment_transferred_at, created_at, order_time
+       FROM orders
+       ORDER BY order_time DESC, created_at DESC`
     );
+
+    const orders = ordersResult.rows;
+    if (orders.length === 0) {
+      return NextResponse.json([]);
+    }
+
+    const orderIds = orders.map((order) => order.id);
+    const itemsResult = await pool.query(
+      `SELECT order_id, item_id, item_name, quantity, price, name, qty, line_total, position
+       FROM order_items
+       WHERE order_id = ANY($1::text[])
+       ORDER BY position ASC, id ASC`,
+      [orderIds]
+    );
+
+    const itemsByOrderId = new Map();
+    for (const row of itemsResult.rows) {
+      const list = itemsByOrderId.get(row.order_id) || [];
+      list.push({
+        id: row.item_id || undefined,
+        name: row.item_name || row.name || "Item",
+        qty: Number(row.quantity || row.qty || 1),
+        price: Number(row.price || 0),
+        lineTotal: Number(row.line_total || Number(row.price || 0) * Number(row.quantity || row.qty || 1)),
+      });
+      itemsByOrderId.set(row.order_id, list);
+    }
+
+    const payload = orders.map((orderRow) =>
+      toApiOrder(orderRow, itemsByOrderId.get(orderRow.id) || [])
+    );
+
+    return NextResponse.json(payload);
+  } catch (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
 export async function POST(request) {
+  const client = await pool.connect();
+
   try {
     const payload = await request.json();
     const { order, error } = sanitizeOrderPayload(payload, { requireItems: true });
     if (error) {
-      return NextResponse.json(
-        { error },
-        { status: 400 }
+      return NextResponse.json({ error }, { status: 400 });
+    }
+
+    await client.query("BEGIN");
+
+    const tableNumberNumeric = Number.parseInt(order.tableNo, 10);
+
+    await client.query(
+      `INSERT INTO orders (
+         id, table_number, order_type, status, payment_status, table_no,
+         customer_name, customer_mobile, total, payment_method, payment_id,
+         invoice_id, invoice_generated_at, completed_at, payment_transferred,
+         payment_transferred_at, updated_at, order_time
+       ) VALUES (
+         $1, $2, $3, $4, $5, $6,
+         $7, $8, $9, $10, $11,
+         $12, $13, $14, $15,
+         $16, NOW(), $17
+       )`,
+      [
+        order.id,
+        Number.isFinite(tableNumberNumeric) ? tableNumberNumeric : null,
+        "DINE_IN",
+        order.status,
+        order.paymentStatus,
+        order.tableNo,
+        order.customerName,
+        order.customerMobile,
+        order.total,
+        order.paymentMethod,
+        order.paymentId,
+        order.invoiceId,
+        order.invoiceGeneratedAt,
+        order.completedAt,
+        order.paymentTransferred,
+        order.paymentTransferredAt,
+        order.time,
+      ]
+    );
+
+    for (let index = 0; index < order.items.length; index += 1) {
+      const item = order.items[index];
+      let itemId = item.id;
+
+      if (Number.isFinite(itemId)) {
+        const menuItemCheck = await client.query(
+          "SELECT id FROM menu_items WHERE id = $1",
+          [itemId]
+        );
+        if (menuItemCheck.rowCount === 0) {
+          itemId = null;
+        }
+      } else {
+        itemId = null;
+      }
+
+      await client.query(
+        `INSERT INTO order_items (
+           order_id, item_id, item_name, quantity, price, kitchen_status,
+           name, qty, line_total, position
+         ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          order.id,
+          itemId,
+          item.name,
+          item.qty,
+          item.price,
+          "Pending",
+          item.name,
+          item.qty,
+          item.lineTotal,
+          index,
+        ]
       );
     }
 
-    const saved = await addOrderToStore(order);
-    return NextResponse.json(saved, { status: 201 });
-  } catch {
-    return NextResponse.json({ error: "Failed to save order" }, { status: 500 });
+    await client.query("COMMIT");
+    return NextResponse.json(order, { status: 201 });
+  } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
+
+    if (error?.code === "23505") {
+      return NextResponse.json(
+        { error: "Order id already exists" },
+        { status: 409 }
+      );
+    }
+
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  } finally {
+    client.release();
   }
 }
 
@@ -216,11 +343,11 @@ export async function PATCH(request) {
     if (Object.prototype.hasOwnProperty.call(body || {}, "invoiceGeneratedAt")) {
       updates.invoiceGeneratedAt = body?.invoiceGeneratedAt
         ? normalizeDate(body.invoiceGeneratedAt)
-        : "";
+        : null;
     }
 
     if (Object.prototype.hasOwnProperty.call(body || {}, "completedAt")) {
-      updates.completedAt = body?.completedAt ? normalizeDate(body.completedAt) : "";
+      updates.completedAt = body?.completedAt ? normalizeDate(body.completedAt) : null;
     }
 
     if (Object.prototype.hasOwnProperty.call(body || {}, "paymentTransferred")) {
@@ -230,7 +357,7 @@ export async function PATCH(request) {
     if (Object.prototype.hasOwnProperty.call(body || {}, "paymentTransferredAt")) {
       updates.paymentTransferredAt = body?.paymentTransferredAt
         ? normalizeDate(body.paymentTransferredAt)
-        : "";
+        : null;
     }
 
     if (Object.keys(updates).length === 0) {
@@ -240,16 +367,89 @@ export async function PATCH(request) {
       );
     }
 
-    const updated = await updateOrderInStore(id, updates);
-    if (!updated) {
+    const fields = [];
+    const values = [];
+    let index = 1;
+
+    if (Object.prototype.hasOwnProperty.call(updates, "status")) {
+      fields.push(`status = $${index++}`);
+      values.push(updates.status);
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "paymentStatus")) {
+      fields.push(`payment_status = $${index++}`);
+      values.push(updates.paymentStatus);
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "paymentMethod")) {
+      fields.push(`payment_method = $${index++}`);
+      values.push(updates.paymentMethod);
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "paymentId")) {
+      fields.push(`payment_id = $${index++}`);
+      values.push(updates.paymentId);
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "invoiceId")) {
+      fields.push(`invoice_id = $${index++}`);
+      values.push(updates.invoiceId);
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "invoiceGeneratedAt")) {
+      fields.push(`invoice_generated_at = $${index++}`);
+      values.push(updates.invoiceGeneratedAt);
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "completedAt")) {
+      fields.push(`completed_at = $${index++}`);
+      values.push(updates.completedAt);
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "paymentTransferred")) {
+      fields.push(`payment_transferred = $${index++}`);
+      values.push(updates.paymentTransferred);
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "paymentTransferredAt")) {
+      fields.push(`payment_transferred_at = $${index++}`);
+      values.push(updates.paymentTransferredAt);
+    }
+
+    fields.push(`updated_at = NOW()`);
+
+    values.push(id);
+    const idParamIndex = index;
+
+    const updateQuery = `
+      UPDATE orders
+      SET ${fields.join(", ")}
+      WHERE id = $${idParamIndex}
+      RETURNING id, table_no, customer_name, customer_mobile, total, status,
+                payment_status, payment_method, payment_id, invoice_id,
+                invoice_generated_at, completed_at, payment_transferred,
+                payment_transferred_at, created_at, order_time
+    `;
+
+    const updatedResult = await pool.query(updateQuery, values);
+    if (updatedResult.rowCount === 0) {
       return NextResponse.json({ error: "Order not found" }, { status: 404 });
     }
 
-    const normalizedUpdated = sanitizeOrderPayload(updated).order || updated;
-    return NextResponse.json(normalizedUpdated);
-  } catch {
+    const orderRow = updatedResult.rows[0];
+
+    const itemsResult = await pool.query(
+      `SELECT order_id, item_id, item_name, quantity, price, name, qty, line_total, position
+       FROM order_items
+       WHERE order_id = $1
+       ORDER BY position ASC, id ASC`,
+      [id]
+    );
+
+    const items = itemsResult.rows.map((row) => ({
+      id: row.item_id || undefined,
+      name: row.item_name || row.name || "Item",
+      qty: Number(row.quantity || row.qty || 1),
+      price: Number(row.price || 0),
+      lineTotal: Number(row.line_total || Number(row.price || 0) * Number(row.quantity || row.qty || 1)),
+    }));
+
+    return NextResponse.json(toApiOrder(orderRow, items));
+  } catch (error) {
     return NextResponse.json(
-      { error: "Failed to update order" },
+      { error: error.message || "Failed to update order" },
       { status: 500 }
     );
   }

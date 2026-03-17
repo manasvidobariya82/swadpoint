@@ -28,11 +28,10 @@ import {
   Mail,
   PieChart,
   Zap,
-  Coffee,
   UtensilsCrossed,
-  ChefHat,
   Sparkles,
 } from "lucide-react";
+import { createDefaultReservationPayload } from "@/lib/reservation-settings-defaults";
 
 const SPECIAL_EVENT_NAME_REGEX = /^[\p{L}\s.'&()\-]+$/u;
 
@@ -49,127 +48,20 @@ const isValidSpecialDateName = (value) => {
 };
 
 export default function ReservationSettings() {
+  const defaultReservationPayload = createDefaultReservationPayload();
   // Main state for all settings
-  const [settings, setSettings] = useState({
-    autoConfirm: true,
-    maxPartySize: 20,
-    advanceBookingDays: 30,
-    depositRequired: false,
-    depositAmount: 0,
-    cancellationWindow: 24,
-    prepaymentRequired: false,
-    prepaymentPercentage: 20,
-    tableTurnoverTime: 90,
-    allowWalkIns: true,
-    smsNotifications: true,
-    emailNotifications: true,
-    bufferTime: 15,
-    maxReservationsPerSlot: 8,
-    waitlistEnabled: true,
-    waitlistAutoFill: true,
-    specialRequests: true,
-    birthdayAlerts: true,
-    anniversaryAlerts: true,
-    theme: "light",
-    language: "en",
-    timezone: "UTC+5:30",
-    currency: "₹",
-  });
+  const [settings, setSettings] = useState(defaultReservationPayload.settings);
 
   // Time slots state
-  const [timeSlots, setTimeSlots] = useState([
-    {
-      id: "1",
-      startTime: "11:00",
-      endTime: "15:00",
-      capacity: 50,
-      isActive: true,
-      days: ["Mon", "Tue", "Wed", "Thu", "Fri"],
-      type: "Lunch",
-    },
-    {
-      id: "2",
-      startTime: "18:00",
-      endTime: "22:00",
-      capacity: 70,
-      isActive: true,
-      days: ["Mon", "Tue", "Wed", "Thu", "Fri"],
-      type: "Dinner",
-    },
-    {
-      id: "3",
-      startTime: "12:00",
-      endTime: "23:00",
-      capacity: 90,
-      isActive: true,
-      days: ["Sat", "Sun"],
-      type: "Weekend",
-    },
-  ]);
+  const [timeSlots, setTimeSlots] = useState(defaultReservationPayload.timeSlots);
 
   // Tables state
-  const [tables, setTables] = useState([
-    {
-      id: "1",
-      number: 1,
-      seats: 2,
-      shape: "circle",
-      status: "available",
-      section: "Window",
-      x: 100,
-      y: 100,
-    },
-    {
-      id: "2",
-      number: 2,
-      seats: 4,
-      shape: "square",
-      status: "available",
-      section: "Window",
-      x: 300,
-      y: 100,
-    },
-    {
-      id: "3",
-      number: 3,
-      seats: 6,
-      shape: "rectangle",
-      status: "reserved",
-      section: "Main",
-      x: 500,
-      y: 100,
-    },
-    {
-      id: "4",
-      number: 4,
-      seats: 8,
-      shape: "rectangle",
-      status: "occupied",
-      section: "Private",
-      x: 100,
-      y: 300,
-    },
-  ]);
+  const [tables, setTables] = useState(defaultReservationPayload.tables);
 
   // Special dates state
-  const [specialDates, setSpecialDates] = useState([
-    {
-      id: "1",
-      date: "2024-12-25",
-      name: "Christmas Day",
-      type: "holiday",
-      closed: true,
-      specialHours: [],
-    },
-    {
-      id: "2",
-      date: "2024-12-31",
-      name: "New Year's Eve",
-      type: "event",
-      closed: false,
-      specialHours: [{ start: "18:00", end: "02:00" }],
-    },
-  ]);
+  const [specialDates, setSpecialDates] = useState(
+    defaultReservationPayload.specialDates
+  );
 
   // UI state
   const [activeTab, setActiveTab] = useState("general");
@@ -198,6 +90,9 @@ export default function ReservationSettings() {
   const [specialDateNameError, setSpecialDateNameError] = useState("");
   const [showStats, setShowStats] = useState(true);
   const [loading, setLoading] = useState(false);
+  const [isBootstrapping, setIsBootstrapping] = useState(true);
+  const [saveError, setSaveError] = useState("");
+  const [loadError, setLoadError] = useState("");
   const [saved, setSaved] = useState(false);
 
   const daysOfWeek = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
@@ -222,24 +117,112 @@ export default function ReservationSettings() {
     revenue: 125000,
   };
 
+  useEffect(() => {
+    let ignore = false;
+
+    const loadReservationSettings = async () => {
+      setIsBootstrapping(true);
+      setLoadError("");
+
+      try {
+        const response = await fetch("/api/reservation-settings", {
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          const payload = await response.json().catch(() => null);
+          throw new Error(
+            payload?.error || "Failed to load reservation settings."
+          );
+        }
+
+        const payload = await response.json();
+        if (ignore) return;
+
+        if (payload?.settings) setSettings(payload.settings);
+        if (Array.isArray(payload?.timeSlots)) setTimeSlots(payload.timeSlots);
+        if (Array.isArray(payload?.tables)) setTables(payload.tables);
+        if (Array.isArray(payload?.specialDates))
+          setSpecialDates(payload.specialDates);
+      } catch (error) {
+        if (!ignore) {
+          setLoadError(
+            error?.message ||
+              "Could not load saved settings. Showing default values."
+          );
+        }
+      } finally {
+        if (!ignore) setIsBootstrapping(false);
+      }
+    };
+
+    loadReservationSettings();
+
+    return () => {
+      ignore = true;
+    };
+  }, []);
+
   // Handle saving
   const handleSave = async () => {
     setLoading(true);
-    // Simulate API call
-    await new Promise((resolve) => setTimeout(resolve, 1500));
-    setLoading(false);
-    setSaved(true);
-    setModalType("success");
-    setShowModal(true);
+    setSaveError("");
 
-    // Reset saved status after 3 seconds
-    setTimeout(() => setSaved(false), 3000);
+    try {
+      const response = await fetch("/api/reservation-settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          settings,
+          timeSlots,
+          tables,
+          specialDates,
+        }),
+      });
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null);
+        throw new Error(payload?.error || "Failed to save reservation settings.");
+      }
+
+      const payload = await response.json();
+      if (payload?.settings) setSettings(payload.settings);
+      if (Array.isArray(payload?.timeSlots)) setTimeSlots(payload.timeSlots);
+      if (Array.isArray(payload?.tables)) setTables(payload.tables);
+      if (Array.isArray(payload?.specialDates))
+        setSpecialDates(payload.specialDates);
+
+      setSaved(true);
+      setModalType("success");
+      setShowModal(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (error) {
+      setSaveError(
+        error?.message ||
+          "Unable to save settings right now. Please check database connection."
+      );
+      setModalType("error");
+      setShowModal(true);
+    } finally {
+      setLoading(false);
+    }
   };
 
   // Handle reset
   const handleReset = () => {
     setModalType("warning");
     setShowModal(true);
+  };
+
+  const resetToDefaultState = () => {
+    const defaults = createDefaultReservationPayload();
+    setSettings(defaults.settings);
+    setTimeSlots(defaults.timeSlots);
+    setTables(defaults.tables);
+    setSpecialDates(defaults.specialDates);
+    setSpecialDateNameError("");
+    setSaveError("");
+    setSaved(false);
   };
 
   // Time slot functions
@@ -405,6 +388,15 @@ export default function ReservationSettings() {
       bgColor: "bg-yellow-50",
       borderColor: "border-yellow-200",
     },
+    error: {
+      title: "Save Failed",
+      message:
+        saveError ||
+        "Unable to save settings right now. Please check database connection.",
+      icon: <AlertCircle className="text-red-500" size={48} />,
+      bgColor: "bg-red-50",
+      borderColor: "border-red-200",
+    },
   };
 
   // Helper function to calculate hours between times
@@ -447,6 +439,12 @@ export default function ReservationSettings() {
               <p className="text-gray-600 mt-2">
                 Configure your restaurant&apos;s reservation preferences and layout
               </p>
+              {isBootstrapping && (
+                <p className="text-sm text-blue-600 mt-2">Loading saved settings...</p>
+              )}
+              {loadError && (
+                <p className="text-sm text-amber-700 mt-2">{loadError}</p>
+              )}
             </div>
             <button
               onClick={() => setShowStats(!showStats)}
@@ -565,7 +563,7 @@ export default function ReservationSettings() {
                 <div className="space-y-2">
                   <button
                     onClick={handleSave}
-                    disabled={loading}
+                    disabled={loading || isBootstrapping}
                     className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-green-500 to-emerald-600 text-white rounded-xl hover:shadow-lg transform hover:-translate-y-0.5 transition-all duration-300 disabled:opacity-50"
                   >
                     {loading ? (
@@ -1828,7 +1826,7 @@ export default function ReservationSettings() {
                     </button>
                     <button
                       onClick={() => {
-                        // Reset logic here
+                        resetToDefaultState();
                         setShowModal(false);
                       }}
                       className="flex-1 px-4 py-3 bg-gradient-to-r from-red-500 to-orange-600 text-white rounded-xl hover:opacity-90 transition-opacity"
@@ -1856,7 +1854,7 @@ export default function ReservationSettings() {
       <div className="fixed bottom-6 right-6 z-40">
         <button
           onClick={handleSave}
-          disabled={loading}
+          disabled={loading || isBootstrapping}
           className={`flex items-center space-x-3 px-6 py-4 rounded-2xl shadow-2xl transform transition-all duration-300 hover:scale-105 ${
             saved
               ? "bg-gradient-to-r from-green-500 to-emerald-600"

@@ -16,20 +16,29 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-## Backend Auth Setup
+## Database Setup
 
-This project now includes backend auth APIs:
+`pg` package is used for PostgreSQL connection in `lib/db.js`.
 
-- `POST /api/auth/register`
-- `POST /api/auth/login`
-- `POST /api/auth/logout`
-- `GET /api/auth/session`
-
-Before running locally, create `.env.local` from `.env.example` and set:
+Create `.env.local` from `.env.example` and set:
 
 ```bash
-AUTH_SECRET=replace-with-a-strong-random-secret
+PGUSER=postgres
+PGHOST=localhost
+PGDATABASE=swadpoint_db
+PGPASSWORD=123456
+PGPORT=5432
 ```
+
+Create tables manually from:
+
+- `documentation/sql/postgres-init.sql`
+
+This project includes PostgreSQL API routes:
+
+- `GET, POST /api/food`
+- `GET, POST /api/user`
+- `GET, POST /api/order`
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

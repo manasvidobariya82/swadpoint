@@ -6,7 +6,8 @@ import {
   toSafeUser,
   verifyPassword,
 } from "@/lib/auth";
-import { findUserByIdentifierInStore } from "@/lib/server-store";
+import pool from "@/lib/db";
+import { ensureCoreTables } from "@/lib/db-schema";
 
 export const runtime = "nodejs";
 
@@ -17,6 +18,8 @@ const normalizeText = (value, maxLength = 120) =>
 
 export async function POST(request) {
   try {
+    await ensureCoreTables();
+
     const payload = await request.json();
     const identifier = normalizeText(payload?.identifier, 120);
     const password = String(payload?.password || "");
@@ -28,7 +31,26 @@ export async function POST(request) {
       );
     }
 
-    const user = await findUserByIdentifierInStore(identifier);
+    const result = await pool.query(
+      `SELECT id, username, email, password_hash, created_at
+       FROM app_users
+       WHERE LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($1)
+       ORDER BY created_at DESC
+       LIMIT 1`,
+      [identifier]
+    );
+
+    const row = result.rows[0];
+    const user = row
+      ? {
+          id: row.id,
+          username: row.username,
+          email: row.email,
+          passwordHash: row.password_hash,
+          createdAt: row.created_at,
+        }
+      : null;
+
     if (!user || !verifyPassword(password, user.passwordHash)) {
       return NextResponse.json(
         { error: "Invalid username/email or password" },

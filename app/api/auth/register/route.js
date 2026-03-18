@@ -7,7 +7,8 @@ import {
   SESSION_COOKIE_NAME,
   toSafeUser,
 } from "@/lib/auth";
-import { createUserInStore } from "@/lib/server-store";
+import pool from "@/lib/db";
+import { ensureCoreTables } from "@/lib/db-schema";
 
 export const runtime = "nodejs";
 
@@ -58,6 +59,8 @@ const validatePayload = (payload) => {
 
 export async function POST(request) {
   try {
+    await ensureCoreTables();
+
     const payload = await request.json();
     const validationError = validatePayload(payload);
     if (validationError) {
@@ -72,12 +75,31 @@ export async function POST(request) {
       createdAt: new Date().toISOString(),
     };
 
-    const createdUser = await createUserInStore(user);
-    if (!createdUser) {
-      return NextResponse.json(
-        { error: "Username or email already exists" },
-        { status: 409 }
+    let createdUser;
+    try {
+      const result = await pool.query(
+        `INSERT INTO app_users (id, username, email, password_hash, created_at)
+         VALUES ($1, $2, $3, $4, $5)
+         RETURNING id, username, email, password_hash, created_at`,
+        [user.id, user.username, user.email, user.passwordHash, user.createdAt]
       );
+
+      const row = result.rows[0];
+      createdUser = {
+        id: row.id,
+        username: row.username,
+        email: row.email,
+        passwordHash: row.password_hash,
+        createdAt: row.created_at,
+      };
+    } catch (error) {
+      if (error?.code === "23505") {
+        return NextResponse.json(
+          { error: "Username or email already exists" },
+          { status: 409 }
+        );
+      }
+      throw error;
     }
 
     const token = createSessionToken(createdUser);

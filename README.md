@@ -23,6 +23,13 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 Create `.env.local` from `.env.example` and set:
 
 ```bash
+APP_TIMEZONE=Asia/Kolkata
+AUTH_SECRET=replace-with-a-strong-random-secret
+DATABASE_URL=postgresql://postgres:password@localhost:5432/swadpoint_db
+POSTGRES_SSL=false
+POSTGRES_SSL_REJECT_UNAUTHORIZED=false
+
+# optional local fallback (used when DATABASE_URL is not set)
 PGUSER=postgres
 PGHOST=localhost
 PGDATABASE=swadpoint_db
@@ -30,15 +37,29 @@ PGPASSWORD=123456
 PGPORT=5432
 ```
 
-Create tables manually from:
+Initialize tables manually from:
 
 - `documentation/sql/postgres-init.sql`
 
-This project includes PostgreSQL API routes:
+Production (Vercel) checklist:
 
-- `GET, POST /api/food`
-- `GET, POST /api/user`
-- `GET, POST /api/order`
+1. Create PostgreSQL database (Neon/Supabase/RDS or your own server).
+2. Run `documentation/sql/postgres-init.sql` once in pgAdmin Query Tool.
+3. In Vercel project settings, add environment variables:
+   - `DATABASE_URL`
+   - `AUTH_SECRET`
+   - `APP_TIMEZONE` (optional)
+   - `POSTGRES_SSL=true` for managed cloud PostgreSQL
+4. Redeploy your Vercel project.
+
+Main API routes using PostgreSQL:
+
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `GET, PUT /api/menu`
+- `GET, POST, PATCH, DELETE /api/inventory`
+- `GET, POST /api/payments`
+- `GET, POST, PATCH /api/orders`
 
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 

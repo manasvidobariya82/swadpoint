@@ -1,5 +1,6 @@
 ﻿import { NextResponse } from "next/server";
 import pool from "@/lib/db";
+import { ensureCoreTables } from "@/lib/db-schema";
 
 export const runtime = "nodejs";
 
@@ -143,6 +144,8 @@ const toApiOrder = (orderRow, itemRows) => ({
 
 export async function GET() {
   try {
+    await ensureCoreTables();
+
     const ordersResult = await pool.query(
       `SELECT id, table_no, customer_name, customer_mobile, total, status,
               payment_status, payment_method, payment_id, invoice_id,
@@ -190,6 +193,7 @@ export async function GET() {
 }
 
 export async function POST(request) {
+  await ensureCoreTables();
   const client = await pool.connect();
 
   try {
@@ -292,6 +296,8 @@ export async function POST(request) {
 
 export async function PATCH(request) {
   try {
+    await ensureCoreTables();
+
     const body = await request.json();
     const id = sanitizeText(body?.id, 64);
     if (!id) {

@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
-import {
-  addInventoryItemToStore,
-  deleteInventoryItemFromStore,
-  getInventoryFromStore,
-  updateInventoryItemInStore,
-} from "@/lib/server-store";
+import pool from "@/lib/db";
+import { ensureCoreTables } from "@/lib/db-schema";
 
 const MAX_STOCK_VALUE = 999999;
 const MAX_PRICE_PER_UNIT = 100000;
@@ -70,11 +66,6 @@ const validateInventoryItem = (item) => {
   return "";
 };
 
-const sanitizeInventoryList = (items) =>
-  (Array.isArray(items) ? items : [])
-    .map((item, index) => sanitizeInventoryItem(item, index))
-    .filter((item) => item.name);
-
 const sortByLatest = (items) =>
   [...items].sort(
     (a, b) =>
@@ -82,10 +73,33 @@ const sortByLatest = (items) =>
       new Date(a?.lastUpdated || 0).getTime()
   );
 
+const toApiInventoryItem = (row) =>
+  sanitizeInventoryItem({
+    id: row.id,
+    name: row.name,
+    category: row.category,
+    currentStock: Number(row.current_stock),
+    minStock: Number(row.min_stock),
+    unit: row.unit,
+    pricePerUnit: Number(row.price_per_unit),
+    supplier: row.supplier,
+    lastUpdated: row.last_updated,
+  });
+
 export async function GET() {
   try {
-    const inventory = await getInventoryFromStore();
-    return NextResponse.json(sortByLatest(sanitizeInventoryList(inventory)));
+    await ensureCoreTables();
+
+    const result = await pool.query(
+      `SELECT id, name, category, current_stock, min_stock, unit, price_per_unit,
+              supplier, last_updated
+       FROM inventory_items
+       ORDER BY last_updated DESC, id ASC`
+    );
+
+    return NextResponse.json(
+      sortByLatest(result.rows.map((row) => toApiInventoryItem(row)).filter(Boolean))
+    );
   } catch {
     return NextResponse.json(
       { error: "Failed to fetch inventory" },
@@ -113,9 +127,38 @@ export async function POST(request) {
       );
     }
 
-    const saved = await addInventoryItemToStore(item);
+    await ensureCoreTables();
+
+    const result = await pool.query(
+      `INSERT INTO inventory_items (
+         id, name, category, current_stock, min_stock, unit, price_per_unit,
+         supplier, last_updated
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING id, name, category, current_stock, min_stock, unit, price_per_unit,
+                 supplier, last_updated`,
+      [
+        item.id,
+        item.name,
+        item.category,
+        item.currentStock,
+        item.minStock,
+        item.unit,
+        item.pricePerUnit,
+        item.supplier,
+        item.lastUpdated,
+      ]
+    );
+
+    const saved = toApiInventoryItem(result.rows[0]);
     return NextResponse.json(saved, { status: 201 });
-  } catch {
+  } catch (error) {
+    if (error?.code === "23505") {
+      return NextResponse.json(
+        { error: "Inventory id already exists" },
+        { status: 409 }
+      );
+    }
+
     return NextResponse.json(
       { error: "Failed to create inventory item" },
       { status: 500 }
@@ -150,14 +193,42 @@ export async function PATCH(request) {
       );
     }
 
-    const updated = await updateInventoryItemInStore(id, updates);
-    if (!updated) {
+    await ensureCoreTables();
+
+    const result = await pool.query(
+      `UPDATE inventory_items
+       SET name = $1,
+           category = $2,
+           current_stock = $3,
+           min_stock = $4,
+           unit = $5,
+           price_per_unit = $6,
+           supplier = $7,
+           last_updated = $8
+       WHERE id = $9
+       RETURNING id, name, category, current_stock, min_stock, unit, price_per_unit,
+                 supplier, last_updated`,
+      [
+        updates.name,
+        updates.category,
+        updates.currentStock,
+        updates.minStock,
+        updates.unit,
+        updates.pricePerUnit,
+        updates.supplier,
+        updates.lastUpdated,
+        id,
+      ]
+    );
+
+    if (result.rowCount === 0) {
       return NextResponse.json(
         { error: "Inventory item not found" },
         { status: 404 }
       );
     }
 
+    const updated = toApiInventoryItem(result.rows[0]);
     return NextResponse.json(updated);
   } catch {
     return NextResponse.json(
@@ -178,8 +249,14 @@ export async function DELETE(request) {
       );
     }
 
-    const deleted = await deleteInventoryItemFromStore(id);
-    if (!deleted) {
+    await ensureCoreTables();
+
+    const result = await pool.query(
+      "DELETE FROM inventory_items WHERE id = $1 RETURNING id",
+      [id]
+    );
+
+    if (result.rowCount === 0) {
       return NextResponse.json(
         { error: "Inventory item not found" },
         { status: 404 }

@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { addPaymentToStore, getPaymentsFromStore } from "@/lib/server-store";
+import pool from "@/lib/db";
+import { ensureCoreTables } from "@/lib/db-schema";
 
 const PAYMENT_STATUSES = ["success", "pending", "failed"];
 const PAYMENT_METHODS = ["UPI", "Cash", "Card"];
@@ -64,11 +65,37 @@ const sortByLatest = (payments) =>
       new Date(b?.timestamp || 0).getTime() - new Date(a?.timestamp || 0).getTime()
   );
 
+const toApiPayment = (row) => {
+  const items = Array.isArray(row.items) ? row.items : [];
+  return sanitizePaymentPayload({
+    id: row.id,
+    orderId: row.order_id,
+    customerName: row.customer_name,
+    customerMobile: row.customer_mobile,
+    tableNo: row.table_no,
+    amount: Number(row.amount),
+    paymentMethod: row.payment_method,
+    status: row.status,
+    timestamp: row.payment_timestamp,
+    transactionId: row.transaction_id,
+    upiId: row.upi_id,
+    items,
+  }).payment;
+};
+
 export async function GET() {
   try {
-    const payments = await getPaymentsFromStore();
-    const normalized = (Array.isArray(payments) ? payments : [])
-      .map((payment) => sanitizePaymentPayload(payment).payment)
+    await ensureCoreTables();
+
+    const result = await pool.query(
+      `SELECT id, order_id, customer_name, customer_mobile, table_no, amount,
+              payment_method, status, payment_timestamp, transaction_id, upi_id, items
+       FROM payments
+       ORDER BY payment_timestamp DESC, created_at DESC`
+    );
+
+    const normalized = (Array.isArray(result.rows) ? result.rows : [])
+      .map((row) => toApiPayment(row))
       .filter(Boolean);
     return NextResponse.json(sortByLatest(normalized));
   } catch {
@@ -90,19 +117,61 @@ export async function POST(request) {
       );
     }
 
-    const existingPayments = await getPaymentsFromStore();
-    const duplicate = (Array.isArray(existingPayments) ? existingPayments : []).find(
-      (existingPayment) =>
-        existingPayment?.id === payment.id ||
-        (payment.orderId && existingPayment?.orderId === payment.orderId)
+    await ensureCoreTables();
+
+    const duplicateResult = await pool.query(
+      `SELECT id, order_id, customer_name, customer_mobile, table_no, amount,
+              payment_method, status, payment_timestamp, transaction_id, upi_id, items
+       FROM payments
+       WHERE id = $1 OR ($2 <> '' AND order_id = $2)
+       LIMIT 1`,
+      [payment.id, payment.orderId]
     );
+
+    const duplicate = duplicateResult.rows[0]
+      ? toApiPayment(duplicateResult.rows[0])
+      : null;
+
     if (duplicate) {
       return NextResponse.json(duplicate);
     }
 
-    const saved = await addPaymentToStore(payment);
+    const insertResult = await pool.query(
+      `INSERT INTO payments (
+         id, order_id, customer_name, customer_mobile, table_no, amount,
+         payment_method, status, payment_timestamp, transaction_id, upi_id, items
+       ) VALUES (
+         $1, $2, $3, $4, $5, $6,
+         $7, $8, $9, $10, $11, $12::jsonb
+       )
+       RETURNING id, order_id, customer_name, customer_mobile, table_no, amount,
+                 payment_method, status, payment_timestamp, transaction_id, upi_id, items`,
+      [
+        payment.id,
+        payment.orderId,
+        payment.customerName,
+        payment.customerMobile,
+        payment.tableNo,
+        payment.amount,
+        payment.paymentMethod,
+        payment.status,
+        payment.timestamp,
+        payment.transactionId,
+        payment.upiId,
+        JSON.stringify(payment.items || []),
+      ]
+    );
+
+    const saved = toApiPayment(insertResult.rows[0]);
     return NextResponse.json(saved, { status: 201 });
-  } catch {
+  } catch (error) {
+    if (error?.code === "23505") {
+      return NextResponse.json(
+        { error: "Payment already exists for this order" },
+        { status: 409 }
+      );
+    }
+
     return NextResponse.json(
       { error: "Failed to save payment" },
       { status: 500 }

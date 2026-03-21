@@ -166,9 +166,10 @@ function CustomerMenuContent() {
   const [formErrors, setFormErrors] = useState({
     customerName: "",
     customerMobile: "",
+    paymentMethod: "",
   });
   const [activeCategory, setActiveCategory] = useState("All");
-  const [paymentMethod, setPaymentMethod] = useState("UPI");
+  const [paymentMethod, setPaymentMethod] = useState("");
   const [confirmation, setConfirmation] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [recentlyAdded, setRecentlyAdded] = useState({});
@@ -381,6 +382,7 @@ function CustomerMenuContent() {
     const nextErrors = {
       customerName: "",
       customerMobile: "",
+      paymentMethod: "",
     };
 
     if (!isValidCustomerName(normalizedName)) {
@@ -391,16 +393,23 @@ function CustomerMenuContent() {
       nextErrors.customerMobile = "Enter valid 10-digit mobile number";
     }
 
-    if (nextErrors.customerName || nextErrors.customerMobile) {
+    if (!VALID_PAYMENT_METHODS.includes(paymentMethod)) {
+      nextErrors.paymentMethod = "Select payment method";
+    }
+
+    if (
+      nextErrors.customerName ||
+      nextErrors.customerMobile ||
+      nextErrors.paymentMethod
+    ) {
       setFormErrors(nextErrors);
       return;
     }
-    setFormErrors({ customerName: "", customerMobile: "" });
-
-    if (!VALID_PAYMENT_METHODS.includes(paymentMethod)) {
-      alert("Invalid payment method selected.");
-      return;
-    }
+    setFormErrors({
+      customerName: "",
+      customerMobile: "",
+      paymentMethod: "",
+    });
 
     if (paymentMethod === "UPI" && !isUpiReady) {
       alert("UPI is unavailable. Ask restaurant to configure a valid UPI ID.");
@@ -410,7 +419,8 @@ function CustomerMenuContent() {
 
     const now = new Date();
     const orderId = `ORD-${now.getTime()}`;
-    const paymentId = `PAY-${now.getTime()}`;
+    const isUpiPayment = paymentMethod === "UPI";
+    const paymentId = isUpiPayment ? `PAY-${now.getTime()}` : null;
 
     const normalizedItems = cart
       .map((item) => {
@@ -446,33 +456,35 @@ function CustomerMenuContent() {
       items: normalizedItems,
       total: finalTotal,
       status: "Pending",
-      paymentStatus: "Paid",
+      paymentStatus: isUpiPayment ? "Paid" : "Pending",
       paymentMethod,
       paymentId,
       time: now.toISOString(),
     };
 
-    const payment = {
-      id: paymentId,
-      orderId,
-      customerName: order.customerName,
-      customerMobile: order.customerMobile,
-      tableNo,
-      amount: finalTotal,
-      paymentMethod,
-      status: "success",
-      timestamp: now.toISOString(),
-      transactionId: `${paymentMethod.toUpperCase()}-${now.getTime()}`,
-      items: normalizedItems.map((item) => `${item.name} x${item.qty}`),
-      upiId: paymentConfig.upiId,
-    };
+    const payment = isUpiPayment
+      ? {
+          id: paymentId,
+          orderId,
+          customerName: order.customerName,
+          customerMobile: order.customerMobile,
+          tableNo,
+          amount: finalTotal,
+          paymentMethod,
+          status: "success",
+          timestamp: now.toISOString(),
+          transactionId: `${paymentMethod.toUpperCase()}-${now.getTime()}`,
+          items: normalizedItems.map((item) => `${item.name} x${item.qty}`),
+          upiId: paymentConfig.upiId,
+        }
+      : null;
 
     try {
       setIsSubmitting(true);
-      await Promise.all([
-        postJson("/api/orders", order),
-        postJson("/api/payments", payment),
-      ]);
+      await postJson("/api/orders", order);
+      if (payment) {
+        await postJson("/api/payments", payment);
+      }
     } catch {
       alert("Could not submit order. Please check internet/server and retry.");
       setIsSubmitting(false);
@@ -483,11 +495,18 @@ function CustomerMenuContent() {
       orderId,
       paymentId,
       amount: finalTotal,
+      paymentMethod,
+      paymentStatus: order.paymentStatus,
     });
     setCart([]);
     setCustomerName("");
     setCustomerMobile("");
-    setFormErrors({ customerName: "", customerMobile: "" });
+    setPaymentMethod("");
+    setFormErrors({
+      customerName: "",
+      customerMobile: "",
+      paymentMethod: "",
+    });
     setIsSubmitting(false);
   };
 
@@ -665,15 +684,26 @@ function CustomerMenuContent() {
                   value={paymentMethod}
                   onChange={(e) => {
                     const method = e.target.value;
-                    if (VALID_PAYMENT_METHODS.includes(method)) {
-                      setPaymentMethod(method);
+                    setPaymentMethod(
+                      VALID_PAYMENT_METHODS.includes(method) ? method : ""
+                    );
+                    if (formErrors.paymentMethod) {
+                      setFormErrors((prev) => ({ ...prev, paymentMethod: "" }));
                     }
                   }}
-                  className="w-full rounded-lg border px-3 py-2 text-sm"
+                  className={`w-full rounded-lg border px-3 py-2 text-sm ${
+                    formErrors.paymentMethod ? "border-red-500" : ""
+                  }`}
                 >
+                  <option value="">Select payment method</option>
                   <option value="UPI">UPI</option>
                   <option value="Cash">Cash</option>
                 </select>
+                {formErrors.paymentMethod && (
+                  <p className="text-xs font-medium text-red-600">
+                    {formErrors.paymentMethod}
+                  </p>
+                )}
               </div>
 
               {paymentMethod === "UPI" && cartTotal > 0 && (
@@ -707,7 +737,11 @@ function CustomerMenuContent() {
                 disabled={isSubmitting}
                 className="mt-5 w-full rounded-lg bg-green-600 px-4 py-2 font-semibold text-white hover:bg-green-700"
               >
-                {isSubmitting ? "Placing order..." : "Place order and pay"}
+                {isSubmitting
+                  ? "Placing order..."
+                  : paymentMethod === "Cash"
+                    ? "Place order"
+                    : "Place order and pay"}
               </button>
             </div>
 
@@ -720,8 +754,16 @@ function CustomerMenuContent() {
                   Order ID: {confirmation.orderId}
                 </p>
                 <p className="text-xs text-green-700">
-                  Payment ID: {confirmation.paymentId}
+                  Payment method: {confirmation.paymentMethod}
                 </p>
+                <p className="text-xs text-green-700">
+                  Payment status: {confirmation.paymentStatus}
+                </p>
+                {confirmation.paymentId && (
+                  <p className="text-xs text-green-700">
+                    Payment ID: {confirmation.paymentId}
+                  </p>
+                )}
                 <p className="text-xs text-green-700">
                   Amount: Rs. {confirmation.amount.toFixed(2)}
                 </p>

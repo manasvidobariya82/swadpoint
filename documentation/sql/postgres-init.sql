@@ -16,6 +16,17 @@ BEGIN
     FROM information_schema.columns
     WHERE table_schema = 'public'
       AND table_name = 'app_users'
+      AND column_name = 'id'
+      AND data_type <> 'text'
+  ) THEN
+    ALTER TABLE app_users ALTER COLUMN id TYPE TEXT USING id::text;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.columns
+    WHERE table_schema = 'public'
+      AND table_name = 'app_users'
       AND column_name = 'name'
   ) AND NOT EXISTS (
     SELECT 1
@@ -45,11 +56,16 @@ BEGIN
 END $$;
 
 ALTER TABLE app_users
+ADD COLUMN IF NOT EXISTS id TEXT,
 ADD COLUMN IF NOT EXISTS username VARCHAR(30),
 ADD COLUMN IF NOT EXISTS email VARCHAR(120),
 ADD COLUMN IF NOT EXISTS password_hash TEXT,
 ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW(),
 ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
+
+UPDATE app_users
+SET id = gen_random_uuid()::text
+WHERE id IS NULL OR TRIM(id) = '';
 
 UPDATE app_users
 SET username = COALESCE(
@@ -73,10 +89,23 @@ DELETE FROM app_users
 WHERE password_hash IS NULL OR TRIM(password_hash) = '';
 
 ALTER TABLE app_users
+ALTER COLUMN id SET NOT NULL,
 ALTER COLUMN username SET NOT NULL,
 ALTER COLUMN email SET NOT NULL,
 ALTER COLUMN password_hash SET NOT NULL,
 ALTER COLUMN created_at SET NOT NULL;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1
+    FROM pg_constraint
+    WHERE conrelid = 'app_users'::regclass
+      AND contype = 'p'
+  ) THEN
+    ALTER TABLE app_users ADD PRIMARY KEY (id);
+  END IF;
+END $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS app_users_username_lower_unique_idx
 ON app_users ((LOWER(username)));

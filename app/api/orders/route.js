@@ -1,6 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 import pool from "@/lib/db";
 import { ensureCoreTables } from "@/lib/db-schema";
+import { publishOrderEvent } from "@/lib/order-events";
 
 export const runtime = "nodejs";
 
@@ -277,6 +278,11 @@ export async function POST(request) {
     }
 
     await client.query("COMMIT");
+    publishOrderEvent({
+      type: "order.created",
+      orderId: order.id,
+    });
+
     return NextResponse.json(order, { status: 201 });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
@@ -452,7 +458,13 @@ export async function PATCH(request) {
       lineTotal: Number(row.line_total || Number(row.price || 0) * Number(row.quantity || row.qty || 1)),
     }));
 
-    return NextResponse.json(toApiOrder(orderRow, items));
+    const updatedOrder = toApiOrder(orderRow, items);
+    publishOrderEvent({
+      type: "order.updated",
+      orderId: updatedOrder.id,
+    });
+
+    return NextResponse.json(updatedOrder);
   } catch (error) {
     return NextResponse.json(
       { error: error.message || "Failed to update order" },

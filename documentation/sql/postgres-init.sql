@@ -151,6 +151,37 @@ CREATE TABLE IF NOT EXISTS orders (
   order_time TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_name = 'orders_items'
+  ) AND NOT EXISTS (
+    SELECT 1
+    FROM information_schema.tables
+    WHERE table_schema = 'public'
+      AND table_name = 'order_items'
+  ) THEN
+    ALTER TABLE orders_items RENAME TO order_items;
+  END IF;
+
+  IF EXISTS (
+    SELECT 1
+    FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND indexname = 'orders_items_order_id_idx'
+  ) AND NOT EXISTS (
+    SELECT 1
+    FROM pg_indexes
+    WHERE schemaname = 'public'
+      AND indexname = 'order_items_order_id_idx'
+  ) THEN
+    ALTER INDEX orders_items_order_id_idx RENAME TO order_items_order_id_idx;
+  END IF;
+END $$;
+
 CREATE TABLE IF NOT EXISTS order_items (
   id BIGSERIAL PRIMARY KEY,
   order_id TEXT NOT NULL,

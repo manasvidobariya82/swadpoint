@@ -4,6 +4,7 @@ const appTimeZone = process.env.APP_TIMEZONE || "Asia/Kolkata";
 process.env.TZ = appTimeZone;
 
 const nextConfig: NextConfig = {
+  serverExternalPackages: ["pg"],
   env: {
     APP_TIMEZONE: appTimeZone,
     NEXT_PUBLIC_APP_TIMEZONE: appTimeZone,

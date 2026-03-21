@@ -58,11 +58,33 @@ export async function POST(request) {
       );
     }
 
-    const token = createSessionToken(user);
-    const response = NextResponse.json({ user: toSafeUser(user) });
+    const loginUpdateResult = await pool.query(
+      `UPDATE app_users
+       SET last_login_at = NOW()
+       WHERE id = $1
+       RETURNING id, username, email, password_hash, created_at, last_login_at`,
+      [user.id]
+    );
+
+    const updatedRow = loginUpdateResult.rows[0];
+    const authenticatedUser = updatedRow
+      ? {
+          id: updatedRow.id,
+          username: updatedRow.username,
+          email: updatedRow.email,
+          passwordHash: updatedRow.password_hash,
+          createdAt: updatedRow.created_at,
+          lastLoginAt: updatedRow.last_login_at,
+        }
+      : user;
+
+    const token = createSessionToken(authenticatedUser);
+    const response = NextResponse.json({ user: toSafeUser(authenticatedUser) });
     response.cookies.set(SESSION_COOKIE_NAME, token, getSessionCookieOptions());
     return response;
-  } catch {
+  } catch (error) {
+    console.error("POST /api/auth/login failed", error);
+
     return NextResponse.json({ error: "Failed to login" }, { status: 500 });
   }
 }

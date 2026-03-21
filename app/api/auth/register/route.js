@@ -109,7 +109,9 @@ export async function POST(request) {
     );
     response.cookies.set(SESSION_COOKIE_NAME, token, getSessionCookieOptions());
     return response;
-  } catch {
+  } catch (error) {
+    console.error("POST /api/auth/register failed", error);
+
     return NextResponse.json(
       { error: "Failed to register user" },
       { status: 500 }

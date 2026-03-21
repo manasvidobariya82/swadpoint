@@ -1,9 +1,13 @@
-﻿import pool from "@/lib/db";
+import { randomUUID } from "crypto";
+import pool from "@/lib/db";
+import { hashPassword } from "@/lib/auth";
+import { ensureCoreTables } from "@/lib/db-schema";
 
 export const runtime = "nodejs";
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-const ALLOWED_ROLES = ["user", "admin"];
+const USERNAME_REGEX = /^[a-zA-Z0-9_]+$/;
+const SPECIAL_CHAR_REGEX = /[@$!%*?&]/;
 
 const toText = (value, max = 120) =>
   String(value || "")
@@ -12,13 +16,23 @@ const toText = (value, max = 120) =>
 
 export async function GET() {
   try {
+    await ensureCoreTables();
+
     const result = await pool.query(
-      "SELECT id, name, email, role FROM users ORDER BY id DESC"
+      `SELECT id, username, email, created_at, last_login_at
+       FROM app_users
+       ORDER BY created_at DESC`
     );
 
     return Response.json({
       success: true,
-      data: result.rows,
+      data: result.rows.map((row) => ({
+        id: row.id,
+        username: row.username,
+        email: row.email,
+        createdAt: row.created_at,
+        lastLoginAt: row.last_login_at,
+      })),
     });
   } catch (err) {
     return Response.json(
@@ -30,17 +44,28 @@ export async function GET() {
 
 export async function POST(request) {
   try {
+    await ensureCoreTables();
+
     const body = await request.json();
 
-    const name = toText(body?.name, 100);
+    const username = toText(body?.username ?? body?.name, 30);
     const email = toText(body?.email, 100).toLowerCase();
-    const password = toText(body?.password, 100);
-    const roleInput = toText(body?.role, 20).toLowerCase();
-    const role = ALLOWED_ROLES.includes(roleInput) ? roleInput : "user";
+    const password = String(body?.password || "");
 
-    if (!name) {
+    if (!username) {
       return Response.json(
-        { success: false, error: "User name is required" },
+        { success: false, error: "Username is required" },
+        { status: 400 }
+      );
+    }
+
+    if (username.length < 3 || !USERNAME_REGEX.test(username)) {
+      return Response.json(
+        {
+          success: false,
+          error:
+            "Username must be at least 3 characters and use only letters, numbers, and underscore",
+        },
         { status: 400 }
       );
     }
@@ -52,29 +77,53 @@ export async function POST(request) {
       );
     }
 
-    if (!password || password.length < 6) {
+    if (!password || password.length < 8) {
       return Response.json(
-        { success: false, error: "Password must be at least 6 characters" },
+        { success: false, error: "Password must be at least 8 characters" },
+        { status: 400 }
+      );
+    }
+
+    if (
+      !/[A-Z]/.test(password) ||
+      !/[a-z]/.test(password) ||
+      !/\d/.test(password) ||
+      !SPECIAL_CHAR_REGEX.test(password)
+    ) {
+      return Response.json(
+        {
+          success: false,
+          error:
+            "Password must include uppercase, lowercase, number, and special character",
+        },
         { status: 400 }
       );
     }
 
     const result = await pool.query(
-      "INSERT INTO users (name, email, password, role) VALUES ($1, $2, $3, $4) RETURNING id, name, email, role",
-      [name, email, password, role]
+      `INSERT INTO app_users (id, username, email, password_hash, created_at)
+       VALUES ($1, $2, $3, $4, NOW())
+       RETURNING id, username, email, created_at, last_login_at`,
+      [randomUUID(), username, email, hashPassword(password)]
     );
 
     return Response.json(
       {
         success: true,
-        data: result.rows[0],
+        data: {
+          id: result.rows[0].id,
+          username: result.rows[0].username,
+          email: result.rows[0].email,
+          createdAt: result.rows[0].created_at,
+          lastLoginAt: result.rows[0].last_login_at,
+        },
       },
       { status: 201 }
     );
   } catch (err) {
     if (err?.code === "23505") {
       return Response.json(
-        { success: false, error: "Email already exists" },
+        { success: false, error: "Username or email already exists" },
         { status: 409 }
       );
     }

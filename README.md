@@ -25,7 +25,7 @@ Create `.env.local` from `.env.example` and set:
 ```bash
 APP_TIMEZONE=Asia/Kolkata
 AUTH_SECRET=replace-with-a-strong-random-secret
-DATABASE_URL=postgresql://postgres:password@localhost:5432/swadpoint_db
+DATABASE_URL=postgresql://postgres:123456@localhost:5432/swadpoint_db
 POSTGRES_SSL=false
 POSTGRES_SSL_REJECT_UNAUTHORIZED=false
 
@@ -40,6 +40,18 @@ PGPORT=5432
 Initialize tables manually from:
 
 - `documentation/sql/postgres-init.sql`
+
+Or run setup directly from this repo:
+
+```bash
+npm run db:setup
+```
+
+Auth in this repo now works through the Node.js API routes and PostgreSQL:
+
+- `POST /api/auth/register` stores `username`, `email`, and a hashed password in `app_users`
+- `POST /api/auth/login` verifies that stored hash and updates `last_login_at`
+- raw passwords are not stored in the database
 
 Production (Vercel) checklist:
 

@@ -5,8 +5,12 @@ CREATE TABLE IF NOT EXISTS app_users (
   username VARCHAR(30) NOT NULL,
   email VARCHAR(120) NOT NULL,
   password_hash TEXT NOT NULL,
-  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_login_at TIMESTAMPTZ
 );
+
+ALTER TABLE app_users
+ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
 
 CREATE UNIQUE INDEX IF NOT EXISTS app_users_username_lower_unique_idx
 ON app_users ((LOWER(username)));
@@ -22,6 +26,12 @@ CREATE TABLE IF NOT EXISTS menu_items (
   description TEXT NOT NULL DEFAULT '',
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+ALTER TABLE menu_items
+ADD COLUMN IF NOT EXISTS description TEXT NOT NULL DEFAULT '';
+
+ALTER TABLE menu_items
+ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();
 
 CREATE TABLE IF NOT EXISTS orders (
   id TEXT PRIMARY KEY,
@@ -101,3 +111,10 @@ WHERE order_id <> '';
 
 CREATE INDEX IF NOT EXISTS payments_payment_timestamp_idx
 ON payments (payment_timestamp DESC);
+
+CREATE TABLE IF NOT EXISTS reservation_settings (
+  id SMALLINT PRIMARY KEY DEFAULT 1,
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT reservation_settings_singleton CHECK (id = 1)
+);

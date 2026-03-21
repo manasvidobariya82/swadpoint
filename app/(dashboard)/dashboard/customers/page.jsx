@@ -1185,6 +1185,8 @@ const normalizeStatus = (value) => {
   return "Pending";
 };
 
+const isActiveOrderStatus = (value) => normalizeStatus(value) === "Pending";
+
 const parseTime = (value) => {
   const parsed = new Date(value).getTime();
   return Number.isFinite(parsed) ? parsed : 0;
@@ -1264,6 +1266,8 @@ const deriveCustomersFromOrders = (orders) => {
         status: "Active",
         totalSpent: 0,
         pendingOrders: 0,
+        activeOrders: 0,
+        completedOrders: 0,
         lastOrderAt: 0,
         lastOrderLabel: "-",
         foodCounter: {},
@@ -1281,8 +1285,13 @@ const deriveCustomersFromOrders = (orders) => {
     customer.orders += 1;
     customer.totalSpent += orderTotal;
 
-    if (normalizedStatus.toLowerCase() === "pending") {
+    if (isActiveOrderStatus(normalizedStatus)) {
       customer.pendingOrders += 1;
+      customer.activeOrders += 1;
+    }
+
+    if (normalizedStatus === "Completed") {
+      customer.completedOrders += 1;
     }
 
     if (orderTime >= customer.lastOrderAt) {
@@ -1511,7 +1520,7 @@ const Pagination = ({
 // NEW: CustomerGrid component – replaces the table with cards
 // ============================================================================
 
-const CustomerGrid = ({ customers, isLoading, onView }) => {
+const CustomerGrid = ({ customers, isLoading, onView, onStatusView }) => {
   if (customers.length === 0) {
     return (
       <div className="rounded-2xl border bg-white p-10 text-center text-gray-400 shadow-sm">
@@ -1604,7 +1613,21 @@ const CustomerGrid = ({ customers, isLoading, onView }) => {
           )}
 
           {/* Action Button */}
-          <div className="mt-4 text-right">
+          <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap gap-2">
+              <button
+                onClick={() => onStatusView(customer, "Active")}
+                className="rounded-full border border-blue-200 bg-blue-50 px-3 py-1 text-xs font-semibold text-blue-700 transition hover:bg-blue-100"
+              >
+                Active {customer.activeOrders}
+              </button>
+              <button
+                onClick={() => onStatusView(customer, "Completed")}
+                className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100"
+              >
+                Completed {customer.completedOrders}
+              </button>
+            </div>
             <button
               onClick={() => onView(customer)}
               className="text-sm font-medium text-blue-600 hover:text-blue-800"
@@ -1627,6 +1650,7 @@ export default function Page() {
   const [search, setSearch] = useState("");
   const [isViewOpen, setIsViewOpen] = useState(false);
   const [selected, setSelected] = useState(null);
+  const [selectedOrderFilter, setSelectedOrderFilter] = useState("All");
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState("");
 
@@ -1659,6 +1683,20 @@ export default function Page() {
         String(customer.status || "").toLowerCase().includes(query),
     );
   }, [customers, search]);
+
+  const selectedRecentOrders = useMemo(() => {
+    if (!selected) return [];
+    if (selectedOrderFilter === "All") return selected.recentOrders;
+    if (selectedOrderFilter === "Active") {
+      return selected.recentOrders.filter((order) => isActiveOrderStatus(order.status));
+    }
+    if (selectedOrderFilter === "Completed") {
+      return selected.recentOrders.filter(
+        (order) => normalizeStatus(order.status) === "Completed",
+      );
+    }
+    return selected.recentOrders;
+  }, [selected, selectedOrderFilter]);
 
   // Pagination
   const {
@@ -1803,6 +1841,12 @@ export default function Page() {
         customers={paginatedCustomers}
         isLoading={isLoading}
         onView={(customer) => {
+          setSelectedOrderFilter("All");
+          setSelected(customer);
+          setIsViewOpen(true);
+        }}
+        onStatusView={(customer, status) => {
+          setSelectedOrderFilter(status);
           setSelected(customer);
           setIsViewOpen(true);
         }}
@@ -1820,7 +1864,13 @@ export default function Page() {
 
       {/* Customer Detail Modal */}
       {isViewOpen && selected && (
-        <Modal title="Customer Details" onClose={() => setIsViewOpen(false)}>
+        <Modal
+          title="Customer Details"
+          onClose={() => {
+            setIsViewOpen(false);
+            setSelectedOrderFilter("All");
+          }}
+        >
           <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
             <p>
               <b>Name:</b> {selected.name}
@@ -1849,12 +1899,32 @@ export default function Page() {
           </div>
 
           <div className="mt-5">
-            <p className="mb-2 text-sm font-semibold">Recent Orders</p>
-            {selected.recentOrders.length === 0 ? (
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm font-semibold">
+                Recent Orders
+                {selectedOrderFilter !== "All" ? ` (${selectedOrderFilter})` : ""}
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {["All", "Active", "Completed"].map((status) => (
+                  <button
+                    key={status}
+                    onClick={() => setSelectedOrderFilter(status)}
+                    className={`rounded-full border px-3 py-1 text-xs font-semibold transition ${
+                      selectedOrderFilter === status
+                        ? "border-blue-600 bg-blue-600 text-white"
+                        : "border-gray-200 bg-white text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    {status}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {selectedRecentOrders.length === 0 ? (
               <p className="text-sm text-gray-500">No recent orders</p>
             ) : (
               <div className="space-y-2">
-                {selected.recentOrders.map((order) => (
+                {selectedRecentOrders.map((order) => (
                   <div
                     key={`${order.id}-${order.time}`}
                     className="rounded-lg border p-3 text-xs"

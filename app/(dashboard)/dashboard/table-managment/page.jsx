@@ -477,25 +477,8 @@ import { useEffect, useState } from "react";
 import QRCode from "react-qr-code";
 import { toast, Toaster } from "react-hot-toast";
 import { Copy, ExternalLink, Trash2 } from "lucide-react";
-import {
-  getMenu,
-  getPaymentConfig,
-  getTables,
-  saveTables,
-} from "@/helper/storage";
 
-const MENU_BASE_URL_KEY = "restaurantMenuBaseUrl";
-const DEFAULT_MENU_CATEGORY = "Main Course";
-const QR_SAFE_URL_LENGTH = 2600;
-const MENU_NAME_MAX_LENGTH = 36;
-const DASHBOARD_REFRESH_INTERVAL_MS = 5000;
 const MAX_TABLE_NUMBER_DIGITS = 4;
-const CATEGORY_TO_CODE = {
-  "Main Course": "m",
-  Starter: "s",
-  Dessert: "d",
-  Beverage: "b",
-};
 
 const normalizeBaseUrl = (value) => {
   const trimmed = String(value || "").trim();
@@ -530,37 +513,6 @@ const isLocalHostUrl = (value) => {
     return false;
   }
 };
-
-const normalizeMenuCategory = (value) => {
-  const category = String(value || "").trim();
-  return category || DEFAULT_MENU_CATEGORY;
-};
-
-const toCategoryCode = (value) =>
-  CATEGORY_TO_CODE[normalizeMenuCategory(value)] || "m";
-
-const sanitizeMenuForQr = (value) => {
-  if (!Array.isArray(value)) return [];
-
-  return value
-    .filter((item) => item && typeof item === "object")
-    .map((item) => ({
-      n: String(item.name || "")
-        .trim()
-        .slice(0, MENU_NAME_MAX_LENGTH),
-      p: Number(item.price) || 0,
-      c: toCategoryCode(item.category),
-    }))
-    .filter((item) => item.n);
-};
-
-const serializeMenuForHash = (items) =>
-  items
-    .map((item) => {
-      const encodedName = encodeURIComponent(item.n);
-      return `${encodedName}~${item.p}~${item.c}`;
-    })
-    .join("|");
 
 const normalizeTableNumber = (value) => {
   const digitsOnly = String(value || "")
@@ -621,17 +573,53 @@ const areTablesEqual = (left, right) =>
   JSON.stringify(Array.isArray(left) ? left : []) ===
   JSON.stringify(Array.isArray(right) ? right : []);
 
+const sanitizeTableRecord = (table) => ({
+  id: String(table?.id || ""),
+  tableNo: normalizeTableNumber(table?.tableNo),
+  createdAt: table?.createdAt || new Date().toISOString(),
+});
+
+const fetchTablesFromApi = async () => {
+  const response = await fetch("/api/tables", { cache: "no-store" });
+  if (!response.ok) throw new Error("Failed to fetch tables");
+  return response.json();
+};
+
+const createTableApi = async (tableNo) => {
+  const response = await fetch("/api/tables", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ tableNo }),
+  });
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(payload?.error || "Failed to create table");
+  }
+
+  return payload;
+};
+
+const deleteTableApi = async (id) => {
+  const response = await fetch(`/api/tables?id=${encodeURIComponent(id)}`, {
+    method: "DELETE",
+  });
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(payload?.error || "Failed to delete table");
+  }
+
+  return payload;
+};
+
 export default function TablesPage() {
-  const [tables, setTables] = useState(() => getTables());
+  const [tables, setTables] = useState([]);
   const [tableNo, setTableNo] = useState("");
   const [baseUrl, setBaseUrl] = useState(() => {
     if (typeof window === "undefined") return "";
-
-    const storedBaseUrl = normalizeBaseUrl(
-      localStorage.getItem(MENU_BASE_URL_KEY) || "",
-    );
     const currentOrigin = normalizeBaseUrl(window.location.origin);
-    return storedBaseUrl || currentOrigin;
+    return currentOrigin;
   });
   const [formErrors, setFormErrors] = useState({
     tableNo: "",
@@ -639,35 +627,26 @@ export default function TablesPage() {
   });
 
   useEffect(() => {
-    const normalized = normalizeBaseUrl(baseUrl);
+    let cancelled = false;
 
-    if (!baseUrl.trim()) {
-      localStorage.removeItem(MENU_BASE_URL_KEY);
-      return;
-    }
+    const loadData = async () => {
+      const tablesResult = await fetchTablesFromApi().catch(() => null);
 
-    if (normalized) {
-      localStorage.setItem(MENU_BASE_URL_KEY, normalized);
-    }
-  }, [baseUrl]);
+      if (!cancelled && Array.isArray(tablesResult)) {
+        const nextTables = tablesResult
+          .map((table) => sanitizeTableRecord(table))
+          .filter((table) => table.id && table.tableNo);
 
-  useEffect(() => {
-    const syncTablesFromStorage = () => {
-      const latestTables = getTables();
-      setTables((currentTables) =>
-        areTablesEqual(currentTables, latestTables)
-          ? currentTables
-          : latestTables,
-      );
+        setTables((currentTables) =>
+          areTablesEqual(currentTables, nextTables) ? currentTables : nextTables
+        );
+      }
     };
 
-    const intervalId = window.setInterval(
-      syncTablesFromStorage,
-      DASHBOARD_REFRESH_INTERVAL_MS,
-    );
+    void loadData();
 
     return () => {
-      window.clearInterval(intervalId);
+      cancelled = true;
     };
   }, []);
 
@@ -680,45 +659,10 @@ export default function TablesPage() {
 
   const buildMenuUrl = (tableNumber) => {
     const origin = getActiveBaseUrl();
-    const params = new URLSearchParams();
-    params.set("table", tableNumber);
-
-    const qrMenuItems = sanitizeMenuForQr(getMenu());
-    const compactPayload = serializeMenuForHash(qrMenuItems);
-    let menuEmbedded = false;
-    if (qrMenuItems.length > 0) {
-      const candidate = `${origin}/menu?${params.toString()}#m=${compactPayload}`;
-      if (candidate.length <= QR_SAFE_URL_LENGTH) {
-        menuEmbedded = true;
-      }
-    }
-
-    const paymentConfig = getPaymentConfig();
-    const upiId = String(paymentConfig?.upiId || "").trim();
-    const payeeName = String(paymentConfig?.payeeName || "").trim();
-
-    if (upiId) params.set("upiId", upiId);
-    if (payeeName) params.set("payeeName", payeeName);
-
-    const baseUrl = `${origin}/menu?${params.toString()}`;
-    const urlWithHash =
-      menuEmbedded && compactPayload
-        ? `${baseUrl}#m=${compactPayload}`
-        : baseUrl;
-
-    return {
-      url: urlWithHash,
-      menuEmbedded,
-      hasMenu: qrMenuItems.length > 0,
-    };
+    return `${origin}/menu/${encodeURIComponent(tableNumber)}`;
   };
 
-  const persistTables = (nextTables) => {
-    setTables(nextTables);
-    saveTables(nextTables);
-  };
-
-  const addTable = () => {
+  const addTable = async () => {
     const tableNoError = getTableNumberError(tableNo, tables);
     const baseUrlError = getBaseUrlError(baseUrl);
     if (tableNoError || baseUrlError) {
@@ -737,30 +681,24 @@ export default function TablesPage() {
       return;
     }
 
-    const { url: qrUrl, menuEmbedded, hasMenu } = buildMenuUrl(normalizedTable);
-
-    const nextTables = [
-      ...tables,
-      {
-        id: `table-${Date.now()}`,
-        tableNo: normalizedTable,
-        qrUrl,
-        createdAt: new Date().toISOString(),
-      },
-    ];
-
-    persistTables(nextTables);
-    setTableNo("");
-    if (hasMenu && !menuEmbedded) {
-      toast.error("Menu too large for QR. Reduce item names or item count.");
-    } else {
+    try {
+      const createdTable = sanitizeTableRecord(await createTableApi(normalizedTable));
+      setTables((prev) => [...prev, createdTable]);
+      setTableNo("");
       toast.success("QR generated");
+    } catch (error) {
+      toast.error(error?.message || "Failed to create table");
     }
   };
 
-  const deleteTable = (id) => {
-    persistTables(tables.filter((table) => table.id !== id));
-    toast.success("Table removed");
+  const deleteTable = async (id) => {
+    try {
+      await deleteTableApi(id);
+      setTables((prev) => prev.filter((table) => table.id !== id));
+      toast.success("Table removed");
+    } catch (error) {
+      toast.error(error?.message || "Failed to delete table");
+    }
   };
 
   const copyURL = async (url) => {
@@ -899,11 +837,7 @@ export default function TablesPage() {
         ) : (
           <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
             {tables.map((table) => {
-              const {
-                url: currentUrl,
-                menuEmbedded,
-                hasMenu,
-              } = buildMenuUrl(table.tableNo);
+              const currentUrl = buildMenuUrl(table.tableNo);
 
               return (
                 <div key={table.id} className="rounded-xl bg-white p-6 shadow">
@@ -940,11 +874,6 @@ export default function TablesPage() {
                       Test
                     </button>
                   </div>
-                  {hasMenu && !menuEmbedded && (
-                    <p className="mt-2 text-xs font-medium text-red-600">
-                      Menu not embedded: QR too long.
-                    </p>
-                  )}
                 </div>
               );
             })}

@@ -3,7 +3,6 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import QRCode from "react-qr-code";
-import { getMenu, getPaymentConfig } from "@/helper/storage";
 
 const DEFAULT_PAYMENT_CONFIG = {
   upiId: "swadpoint@upi",
@@ -114,64 +113,6 @@ const sanitizeMenuItem = (item, index, idPrefix = "menu-item") => {
   };
 };
 
-const parseItemsQuery = (value) => {
-  if (!value) return [];
-
-  try {
-    const parsed = JSON.parse(value);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed
-      .map((item, index) =>
-        sanitizeMenuItem(
-          {
-            id: item.id || item.i,
-            name: item.name || item.n,
-            description: item.description || item.d,
-            category: item.category || item.c,
-            price: item.price ?? item.p,
-          },
-          index,
-          "query-item"
-        )
-      )
-      .filter(Boolean);
-  } catch {
-    return [];
-  }
-};
-
-const parseItemsHash = (value) => {
-  const raw = String(value || "").trim();
-  if (!raw) return [];
-
-  return raw
-    .split("|")
-    .map((entry, index) => {
-      const [encodedName, priceValue, categoryCode] = entry.split("~");
-      const candidateName = String(encodedName || "").trim();
-      let name = candidateName;
-      try {
-        name = decodeURIComponent(candidateName);
-      } catch {
-        name = candidateName;
-      }
-
-      return sanitizeMenuItem(
-        {
-          id: `hash-item-${index}`,
-          name,
-          description: "",
-          category: categoryCode,
-          price: priceValue,
-        },
-        index,
-        "hash-item"
-      );
-    })
-    .filter(Boolean);
-};
-
 const sanitizeMenuItems = (value) => {
   if (!Array.isArray(value)) return [];
 
@@ -195,6 +136,12 @@ const fetchMenuFromServer = async () => {
   return sanitizeMenuItems(data);
 };
 
+const fetchPaymentConfigFromServer = async () => {
+  const response = await fetch("/api/payment-config", { cache: "no-store" });
+  if (!response.ok) throw new Error("Failed to fetch payment config");
+  return response.json();
+};
+
 const postJson = async (url, payload) => {
   const response = await fetch(url, {
     method: "POST",
@@ -212,9 +159,6 @@ const postJson = async (url, payload) => {
 function CustomerMenuContent() {
   const searchParams = useSearchParams();
   const tableNoParam = searchParams.get("table");
-  const itemsParam = searchParams.get("items");
-  const upiIdParam = searchParams.get("upiId");
-  const payeeNameParam = searchParams.get("payeeName");
 
   const [cart, setCart] = useState([]);
   const [customerName, setCustomerName] = useState("");
@@ -229,27 +173,12 @@ function CustomerMenuContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [recentlyAdded, setRecentlyAdded] = useState({});
   const [serverMenuItems, setServerMenuItems] = useState([]);
-  const [hashMenuItems] = useState(() => {
-    if (typeof window === "undefined") return [];
-    const hash = window.location.hash || "";
-    const payload = hash.startsWith("#") ? hash.slice(1) : hash;
-    const hashParams = new URLSearchParams(payload);
-    return parseItemsHash(hashParams.get("m"));
-  });
+  const [paymentConfig, setPaymentConfig] = useState(DEFAULT_PAYMENT_CONFIG);
   const addTimeoutRef = useRef({});
-
-  const queryMenuItems = useMemo(() => parseItemsQuery(itemsParam), [itemsParam]);
-  const localMenuItems = useMemo(() => sanitizeMenuItems(getMenu()), []);
   const tableNo = useMemo(() => normalizeTableNumber(tableNoParam), [tableNoParam]);
 
   useEffect(() => {
     let isCancelled = false;
-
-    if (queryMenuItems.length > 0) {
-      return () => {
-        isCancelled = true;
-      };
-    }
 
     const loadServerMenu = async () => {
       try {
@@ -268,17 +197,31 @@ function CustomerMenuContent() {
     return () => {
       isCancelled = true;
     };
-  }, [queryMenuItems.length]);
+  }, []);
 
-  const menuItems = useMemo(() => {
-    if (hashMenuItems.length > 0) return hashMenuItems;
-    if (queryMenuItems.length > 0) return queryMenuItems;
-    if (serverMenuItems.length > 0) return serverMenuItems;
-    return localMenuItems;
-  }, [hashMenuItems, queryMenuItems, serverMenuItems, localMenuItems]);
+  useEffect(() => {
+    let isCancelled = false;
 
-  const menuSource =
-    hashMenuItems.length > 0 ? "hash" : queryMenuItems.length > 0 ? "query" : "server";
+    const loadPaymentConfig = async () => {
+      try {
+        const config = await fetchPaymentConfigFromServer();
+        if (!isCancelled) {
+          setPaymentConfig(sanitizePaymentConfig(config));
+        }
+      } catch {
+        if (!isCancelled) {
+          setPaymentConfig(DEFAULT_PAYMENT_CONFIG);
+        }
+      }
+    };
+
+    loadPaymentConfig();
+    return () => {
+      isCancelled = true;
+    };
+  }, []);
+
+  const menuItems = useMemo(() => serverMenuItems, [serverMenuItems]);
 
   const groupedMenuItems = useMemo(() => {
     const grouped = new Map();
@@ -330,14 +273,6 @@ function CustomerMenuContent() {
       (group) => group.category === selectedCategory
     );
   }, [groupedMenuItems, selectedCategory]);
-
-  const paymentConfig = useMemo(() => {
-    const storedPaymentConfig = sanitizePaymentConfig(getPaymentConfig());
-    return sanitizePaymentConfig({
-      upiId: upiIdParam || storedPaymentConfig.upiId,
-      payeeName: payeeNameParam || storedPaymentConfig.payeeName,
-    });
-  }, [upiIdParam, payeeNameParam]);
 
   const cartTotal = useMemo(
     () =>
@@ -564,11 +499,9 @@ function CustomerMenuContent() {
           <p className="mt-1 text-sm text-gray-600">
             Table: <span className="font-semibold">{tableNo || "Unknown"}</span>
           </p>
-          {menuSource === "hash" && (
-            <p className="mt-2 text-sm font-medium text-blue-600">
-              Menu loaded from QR URL.
-            </p>
-          )}
+          <p className="mt-2 text-sm font-medium text-blue-600">
+            Menu loaded from backend.
+          </p>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-3">

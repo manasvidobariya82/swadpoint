@@ -2,10 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import QRCode from "react-qr-code";
-import {
-  getPaymentConfig,
-  savePaymentConfig,
-} from "@/helper/storage";
 import { downloadInvoice, printInvoice } from "@/helper/invoice";
 
 const PAYMENTS_CACHE_KEY = "swadpointBillingPaymentsCache";
@@ -34,6 +30,27 @@ const fetchOrdersFromApi = async () => {
   const response = await fetch("/api/orders", { cache: "no-store" });
   if (!response.ok) throw new Error("Failed to fetch orders");
   return response.json();
+};
+
+const fetchPaymentConfigFromApi = async () => {
+  const response = await fetch("/api/payment-config", { cache: "no-store" });
+  if (!response.ok) throw new Error("Failed to fetch payment config");
+  return response.json();
+};
+
+const savePaymentConfigToApi = async (payload) => {
+  const response = await fetch("/api/payment-config", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(data?.error || "Failed to save payment config");
+  }
+
+  return data;
 };
 
 const toNumber = (value) => {
@@ -242,9 +259,10 @@ export default function BillingPage() {
   });
 
   const loadData = async () => {
-    const [paymentsResult, ordersResult] = await Promise.allSettled([
+    const [paymentsResult, ordersResult, paymentConfigResult] = await Promise.allSettled([
       fetchPaymentsFromApi(),
       fetchOrdersFromApi(),
+      fetchPaymentConfigFromApi(),
     ]);
 
     if (paymentsResult.status === "fulfilled") {
@@ -263,7 +281,13 @@ export default function BillingPage() {
     }
 
     setIsLoading(false);
-    setPaymentConfig(getPaymentConfig());
+
+    if (paymentConfigResult.status === "fulfilled") {
+      setPaymentConfig({
+        upiId: normalizeText(paymentConfigResult.value?.upiId, MAX_UPI_ID_LENGTH),
+        payeeName: normalizeText(paymentConfigResult.value?.payeeName, MAX_PAYEE_NAME_LENGTH),
+      });
+    }
   };
 
   useEffect(() => {
@@ -332,8 +356,17 @@ export default function BillingPage() {
     }
     setConfigErrors({ upiId: "", payeeName: "" });
 
-    savePaymentConfig({ upiId, payeeName });
-    alert("Payment QR config saved.");
+    savePaymentConfigToApi({ upiId, payeeName })
+      .then((saved) => {
+        setPaymentConfig({
+          upiId: normalizeText(saved?.upiId, MAX_UPI_ID_LENGTH),
+          payeeName: normalizeText(saved?.payeeName, MAX_PAYEE_NAME_LENGTH),
+        });
+        alert("Payment QR config saved.");
+      })
+      .catch((error) => {
+        alert(error?.message || "Failed to save payment QR config.");
+      });
   };
 
   const paymentQrUrl = useMemo(() => {

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getMenu, saveMenu } from "@/helper/storage";
 
 const MENU_CATEGORIES = ["Main Course", "Starter", "Dessert", "Beverage"];
 const CATEGORY_FILTERS = ["All", ...MENU_CATEGORIES];
@@ -173,16 +172,16 @@ export default function AdminMenuPage() {
     const queryItems = parseItemsQuery(params.get("items"));
     if (queryItems.length > 0) return queryItems;
 
-    return sanitizeMenuItems(getMenu());
+    return [];
   });
   const [form, setForm] = useState(EMPTY_FORM);
   const [formErrors, setFormErrors] = useState(EMPTY_FORM_ERRORS);
   const [editingId, setEditingId] = useState(null);
   const [menuSource, setMenuSource] = useState(() => {
-    if (typeof window === "undefined") return "local";
+    if (typeof window === "undefined") return "server";
     const params = new URLSearchParams(window.location.search);
     const queryItems = parseItemsQuery(params.get("items"));
-    return queryItems.length > 0 ? "query" : "local";
+    return queryItems.length > 0 ? "query" : "server";
   });
   const [activeCategory, setActiveCategory] = useState("All");
 
@@ -194,22 +193,14 @@ export default function AdminMenuPage() {
       };
     }
 
-    const localMenu = sanitizeMenuItems(getMenu());
-
     const loadServerMenu = async () => {
       try {
         const serverMenu = await fetchMenuFromServer();
         if (isCancelled) return;
-
-        if (serverMenu.length > 0 || localMenu.length === 0) {
-          setMenuItems(serverMenu);
-          saveMenu(serverMenu);
-        } else {
-          void saveMenuToServer(localMenu);
-        }
+        setMenuItems(serverMenu);
         setMenuSource("server");
       } catch {
-        // Keep local menu if server request fails.
+        setMenuItems([]);
       }
     };
 
@@ -223,7 +214,6 @@ export default function AdminMenuPage() {
   const persistMenu = (nextMenu) => {
     const normalizedMenu = sanitizeMenuItems(nextMenu);
     setMenuItems(normalizedMenu);
-    saveMenu(normalizedMenu);
 
     if (menuSource !== "query") {
       void saveMenuToServer(normalizedMenu);

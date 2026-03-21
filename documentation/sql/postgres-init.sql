@@ -376,6 +376,59 @@ WHERE order_id <> '';
 CREATE INDEX IF NOT EXISTS payments_payment_timestamp_idx
 ON payments (payment_timestamp DESC);
 
+CREATE TABLE IF NOT EXISTS dining_tables (
+  id TEXT PRIMARY KEY,
+  table_no TEXT NOT NULL UNIQUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+ALTER TABLE dining_tables
+ADD COLUMN IF NOT EXISTS id TEXT,
+ADD COLUMN IF NOT EXISTS table_no TEXT,
+ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ DEFAULT NOW();
+
+UPDATE dining_tables
+SET
+  table_no = COALESCE(NULLIF(TRIM(table_no), ''), 'NA'),
+  created_at = COALESCE(created_at, NOW())
+WHERE
+  table_no IS NULL OR TRIM(table_no) = ''
+  OR created_at IS NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS dining_tables_table_no_unique_idx
+ON dining_tables (table_no);
+
+CREATE TABLE IF NOT EXISTS payment_settings (
+  id SMALLINT PRIMARY KEY DEFAULT 1,
+  upi_id VARCHAR(80) NOT NULL DEFAULT 'swadpoint@upi',
+  payee_name VARCHAR(80) NOT NULL DEFAULT 'SwadPoint Restaurant',
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  CONSTRAINT payment_settings_singleton CHECK (id = 1)
+);
+
+ALTER TABLE payment_settings
+ADD COLUMN IF NOT EXISTS id SMALLINT,
+ADD COLUMN IF NOT EXISTS upi_id VARCHAR(80) DEFAULT 'swadpoint@upi',
+ADD COLUMN IF NOT EXISTS payee_name VARCHAR(80) DEFAULT 'SwadPoint Restaurant',
+ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+INSERT INTO payment_settings (id, upi_id, payee_name)
+VALUES (1, 'swadpoint@upi', 'SwadPoint Restaurant')
+ON CONFLICT (id) DO NOTHING;
+
+UPDATE payment_settings
+SET
+  upi_id = COALESCE(NULLIF(TRIM(upi_id), ''), 'swadpoint@upi'),
+  payee_name = COALESCE(NULLIF(TRIM(payee_name), ''), 'SwadPoint Restaurant'),
+  updated_at = COALESCE(updated_at, NOW())
+WHERE
+  id = 1
+  AND (
+    upi_id IS NULL OR TRIM(upi_id) = ''
+    OR payee_name IS NULL OR TRIM(payee_name) = ''
+    OR updated_at IS NULL
+  );
+
 CREATE TABLE IF NOT EXISTS reservation_settings (
   id SMALLINT PRIMARY KEY DEFAULT 1,
   payload JSONB NOT NULL DEFAULT '{}'::jsonb,

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import {
   getSessionCookieOptions,
+  normalizeUserRole,
   parseSessionToken,
   SESSION_COOKIE_NAME,
 } from "@/lib/auth";
@@ -30,6 +31,7 @@ export async function GET(request) {
       id: session.sub,
       username: session.username,
       email: session.email,
+      role: normalizeUserRole(session.role),
     },
   });
 }

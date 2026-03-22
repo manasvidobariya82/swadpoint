@@ -53,6 +53,21 @@ const normalizePaymentStatus = (value) => {
 
 const normalizeBoolean = (value) => Boolean(value);
 
+const normalizeOptionalStatus = (value) => {
+  const status = sanitizeText(value, 20);
+  return ORDER_STATUSES.includes(status) ? status : "";
+};
+
+const normalizeOptionalMobile = (value) => {
+  const digits = String(value || "").replace(/\D/g, "").slice(0, 10);
+  return /^\d{10}$/.test(digits) ? digits : "";
+};
+
+const normalizeOptionalTableNo = (value) => {
+  const cleaned = sanitizeText(value, 20).replace(/[^a-zA-Z0-9-]/g, "");
+  return cleaned || "";
+};
+
 const sanitizeOrderItem = (item) => {
   if (!item || typeof item !== "object") return null;
 
@@ -143,9 +158,58 @@ const toApiOrder = (orderRow, itemRows) => ({
   paymentTransferredAt: orderRow.payment_transferred_at || "",
 });
 
-export async function GET() {
+export async function GET(request) {
   try {
     await ensureCoreTables();
+
+    const searchParams = request.nextUrl.searchParams;
+    const filters = {
+      id: sanitizeText(
+        searchParams.get("id") || searchParams.get("orderId"),
+        64,
+      ),
+      customerName: sanitizeText(searchParams.get("customerName"), 80),
+      customerMobile: normalizeOptionalMobile(searchParams.get("customerMobile")),
+      tableNo: normalizeOptionalTableNo(searchParams.get("tableNo")),
+      status: normalizeOptionalStatus(searchParams.get("status")),
+      limit: Math.min(
+        200,
+        Math.max(1, Number.parseInt(searchParams.get("limit") || "200", 10) || 200),
+      ),
+    };
+
+    const whereClauses = [];
+    const values = [];
+    let index = 1;
+
+    if (filters.id) {
+      whereClauses.push(`id = $${index++}`);
+      values.push(filters.id);
+    }
+
+    if (filters.customerName) {
+      whereClauses.push(`LOWER(customer_name) LIKE LOWER($${index++})`);
+      values.push(`%${filters.customerName}%`);
+    }
+
+    if (filters.customerMobile) {
+      whereClauses.push(`customer_mobile = $${index++}`);
+      values.push(filters.customerMobile);
+    }
+
+    if (filters.tableNo) {
+      whereClauses.push(`table_no = $${index++}`);
+      values.push(filters.tableNo);
+    }
+
+    if (filters.status) {
+      whereClauses.push(`status = $${index++}`);
+      values.push(filters.status);
+    }
+
+    values.push(filters.limit);
+    const whereSql =
+      whereClauses.length > 0 ? `WHERE ${whereClauses.join(" AND ")}` : "";
 
     const ordersResult = await pool.query(
       `SELECT id, table_no, customer_name, customer_mobile, total, status,
@@ -153,7 +217,10 @@ export async function GET() {
               invoice_generated_at, completed_at, payment_transferred,
               payment_transferred_at, created_at, order_time
        FROM orders
-       ORDER BY order_time DESC, created_at DESC`
+       ${whereSql}
+       ORDER BY order_time DESC, created_at DESC
+       LIMIT $${index}`,
+      values,
     );
 
     const orders = ordersResult.rows;

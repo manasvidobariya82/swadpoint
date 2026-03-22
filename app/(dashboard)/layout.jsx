@@ -38,6 +38,11 @@ export default function DashboardLayout({ children }) {
         }
 
         if (!cancelled) {
+          if (data.user.role !== "admin") {
+            setUser(null);
+            router.replace("/welcome");
+            return;
+          }
           setUser(data.user);
         }
       } catch {

@@ -128,7 +128,7 @@ export default function LoginPage() {
         return;
       }
 
-      router.push("/dashboard");
+      router.push(data?.user?.role === "admin" ? "/dashboard" : "/welcome");
       router.refresh();
     } catch {
       setSubmitError("Unable to login right now. Please try again.");

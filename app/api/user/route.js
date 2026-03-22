@@ -1,6 +1,6 @@
 import { randomUUID } from "crypto";
 import pool from "@/lib/db";
-import { hashPassword } from "@/lib/auth";
+import { hashPassword, shouldGrantAdminRole } from "@/lib/auth";
 import { ensureCoreTables } from "@/lib/db-schema";
 
 export const runtime = "nodejs";
@@ -19,7 +19,7 @@ export async function GET() {
     await ensureCoreTables();
 
     const result = await pool.query(
-      `SELECT id, username, email, created_at, last_login_at
+      `SELECT id, username, email, role, created_at, last_login_at
        FROM app_users
        ORDER BY created_at DESC`
     );
@@ -30,6 +30,7 @@ export async function GET() {
         id: row.id,
         username: row.username,
         email: row.email,
+        role: row.role,
         createdAt: row.created_at,
         lastLoginAt: row.last_login_at,
       })),
@@ -100,11 +101,25 @@ export async function POST(request) {
       );
     }
 
+    const adminCountResult = await pool.query(
+      `SELECT COUNT(*)::int AS count
+       FROM app_users
+       WHERE LOWER(TRIM(COALESCE(role, 'customer'))) = 'admin'`
+    );
+
+    const role = shouldGrantAdminRole({
+      username,
+      email,
+      existingAdminCount: adminCountResult.rows[0]?.count ?? 0,
+    })
+      ? "admin"
+      : "customer";
+
     const result = await pool.query(
-      `INSERT INTO app_users (id, username, email, password_hash, created_at)
-       VALUES ($1, $2, $3, $4, NOW())
-       RETURNING id, username, email, created_at, last_login_at`,
-      [randomUUID(), username, email, hashPassword(password)]
+      `INSERT INTO app_users (id, username, email, role, password_hash, created_at)
+       VALUES ($1, $2, $3, $4, $5, NOW())
+       RETURNING id, username, email, role, created_at, last_login_at`,
+      [randomUUID(), username, email, role, hashPassword(password)]
     );
 
     return Response.json(
@@ -114,6 +129,7 @@ export async function POST(request) {
           id: result.rows[0].id,
           username: result.rows[0].username,
           email: result.rows[0].email,
+          role: result.rows[0].role,
           createdAt: result.rows[0].created_at,
           lastLoginAt: result.rows[0].last_login_at,
         },

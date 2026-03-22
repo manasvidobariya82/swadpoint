@@ -32,7 +32,7 @@ export async function POST(request) {
     }
 
     const result = await pool.query(
-      `SELECT id, username, email, password_hash, created_at
+      `SELECT id, username, email, role, password_hash, created_at
        FROM app_users
        WHERE LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($1)
        ORDER BY created_at DESC
@@ -46,6 +46,7 @@ export async function POST(request) {
           id: row.id,
           username: row.username,
           email: row.email,
+          role: row.role,
           passwordHash: row.password_hash,
           createdAt: row.created_at,
         }
@@ -62,7 +63,7 @@ export async function POST(request) {
       `UPDATE app_users
        SET last_login_at = NOW()
        WHERE id = $1
-       RETURNING id, username, email, password_hash, created_at, last_login_at`,
+       RETURNING id, username, email, role, password_hash, created_at, last_login_at`,
       [user.id]
     );
 
@@ -72,6 +73,7 @@ export async function POST(request) {
           id: updatedRow.id,
           username: updatedRow.username,
           email: updatedRow.email,
+          role: updatedRow.role,
           passwordHash: updatedRow.password_hash,
           createdAt: updatedRow.created_at,
           lastLoginAt: updatedRow.last_login_at,

@@ -5,6 +5,7 @@ import {
   getSessionCookieOptions,
   hashPassword,
   SESSION_COOKIE_NAME,
+  shouldGrantAdminRole,
   toSafeUser,
 } from "@/lib/auth";
 import pool from "@/lib/db";
@@ -71,17 +72,39 @@ export async function POST(request) {
       id: randomUUID(),
       username: normalizeText(payload.username, 30),
       email: normalizeText(payload.email, 120).toLowerCase(),
+      role: "customer",
       passwordHash: hashPassword(payload.password),
       createdAt: new Date().toISOString(),
     };
 
     let createdUser;
     try {
+      const adminCountResult = await pool.query(
+        `SELECT COUNT(*)::int AS count
+         FROM app_users
+         WHERE LOWER(TRIM(COALESCE(role, 'customer'))) = 'admin'`
+      );
+
+      user.role = shouldGrantAdminRole({
+        username: user.username,
+        email: user.email,
+        existingAdminCount: adminCountResult.rows[0]?.count ?? 0,
+      })
+        ? "admin"
+        : "customer";
+
       const result = await pool.query(
-        `INSERT INTO app_users (id, username, email, password_hash, created_at)
-         VALUES ($1, $2, $3, $4, $5)
-         RETURNING id, username, email, password_hash, created_at`,
-        [user.id, user.username, user.email, user.passwordHash, user.createdAt]
+        `INSERT INTO app_users (id, username, email, role, password_hash, created_at)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         RETURNING id, username, email, role, password_hash, created_at`,
+        [
+          user.id,
+          user.username,
+          user.email,
+          user.role,
+          user.passwordHash,
+          user.createdAt,
+        ]
       );
 
       const row = result.rows[0];
@@ -89,6 +112,7 @@ export async function POST(request) {
         id: row.id,
         username: row.username,
         email: row.email,
+        role: row.role,
         passwordHash: row.password_hash,
         createdAt: row.created_at,
       };

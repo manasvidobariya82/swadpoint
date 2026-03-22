@@ -1346,6 +1346,25 @@ const fetchOrdersFromApi = async () => {
   return response.json();
 };
 
+const updateOrderStatusInApi = async (id, status) => {
+  const response = await fetch("/api/orders", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      id,
+      status,
+      completedAt: status === "Completed" ? new Date().toISOString() : null,
+    }),
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => null);
+    throw new Error(payload?.error || "Failed to update order status");
+  }
+
+  return response.json();
+};
+
 // ============================================================================
 // Custom Hooks (unchanged)
 // ============================================================================
@@ -1360,10 +1379,14 @@ const useCustomers = () => {
     try {
       const orderList = await fetchOrdersFromApi();
       const merged = mergeOrders(getOrders(), orderList);
+      const nextCustomers = deriveCustomersFromOrders(merged);
       saveOrders(merged);
-      setCustomers(deriveCustomersFromOrders(merged));
+      setCustomers(nextCustomers);
+      return nextCustomers;
     } catch {
-      setCustomers(deriveCustomersFromOrders(getOrders()));
+      const fallbackCustomers = deriveCustomersFromOrders(getOrders());
+      setCustomers(fallbackCustomers);
+      return fallbackCustomers;
     } finally {
       setIsLoading(false);
     }
@@ -1520,7 +1543,14 @@ const Pagination = ({
 // NEW: CustomerGrid component – replaces the table with cards
 // ============================================================================
 
-const CustomerGrid = ({ customers, isLoading, onView, onStatusView }) => {
+const CustomerGrid = ({
+  customers,
+  isLoading,
+  onView,
+  onStatusView,
+  onMarkComplete,
+  updatingOrderId,
+}) => {
   if (customers.length === 0) {
     return (
       <div className="rounded-2xl border bg-white p-10 text-center text-gray-400 shadow-sm">
@@ -1606,6 +1636,31 @@ const CustomerGrid = ({ customers, isLoading, onView, onStatusView }) => {
                         ))}
                       </div>
                     )}
+                    <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                      <span
+                        className={`rounded-full px-2 py-1 text-[11px] font-semibold ${
+                          normalizeStatus(order.status) === "Completed"
+                            ? "bg-emerald-100 text-emerald-700"
+                            : "bg-orange-100 text-orange-700"
+                        }`}
+                      >
+                        {normalizeStatus(order.status)}
+                      </span>
+                      {isActiveOrderStatus(order.status) ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            void onMarkComplete(order.id);
+                          }}
+                          disabled={updatingOrderId === order.id}
+                          className="rounded-full border border-emerald-200 bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-wait disabled:opacity-60"
+                        >
+                          {updatingOrderId === order.id
+                            ? "Completing..."
+                            : "Mark Complete"}
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -1653,6 +1708,8 @@ export default function Page() {
   const [selectedOrderFilter, setSelectedOrderFilter] = useState("All");
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncedAt, setLastSyncedAt] = useState("");
+  const [updatingOrderId, setUpdatingOrderId] = useState("");
+  const [orderActionError, setOrderActionError] = useState("");
 
   const handleSyncNow = async () => {
     if (isSyncing) return;
@@ -1684,19 +1741,32 @@ export default function Page() {
     );
   }, [customers, search]);
 
+  const selectedCustomer = useMemo(() => {
+    if (!selected) return null;
+
+    return (
+      customers.find(
+        (customer) =>
+          customer.name === selected.name && customer.mobile === selected.mobile,
+      ) || selected
+    );
+  }, [customers, selected]);
+
   const selectedRecentOrders = useMemo(() => {
-    if (!selected) return [];
-    if (selectedOrderFilter === "All") return selected.recentOrders;
+    if (!selectedCustomer) return [];
+    if (selectedOrderFilter === "All") return selectedCustomer.recentOrders;
     if (selectedOrderFilter === "Active") {
-      return selected.recentOrders.filter((order) => isActiveOrderStatus(order.status));
+      return selectedCustomer.recentOrders.filter((order) =>
+        isActiveOrderStatus(order.status),
+      );
     }
     if (selectedOrderFilter === "Completed") {
-      return selected.recentOrders.filter(
+      return selectedCustomer.recentOrders.filter(
         (order) => normalizeStatus(order.status) === "Completed",
       );
     }
-    return selected.recentOrders;
-  }, [selected, selectedOrderFilter]);
+    return selectedCustomer.recentOrders;
+  }, [selectedCustomer, selectedOrderFilter]);
 
   // Pagination
   const {
@@ -1783,6 +1853,25 @@ export default function Page() {
     URL.revokeObjectURL(url);
   };
 
+  const handleMarkOrderComplete = async (orderId) => {
+    if (!orderId || updatingOrderId === orderId) return;
+
+    setOrderActionError("");
+    setUpdatingOrderId(orderId);
+
+    try {
+      await updateOrderStatusInApi(orderId, "Completed");
+      await Promise.resolve(refresh());
+      setLastSyncedAt(formatTime(Date.now()));
+    } catch (error) {
+      setOrderActionError(
+        error?.message || "Unable to mark this order as completed.",
+      );
+    } finally {
+      setUpdatingOrderId("");
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -1835,6 +1924,11 @@ export default function Page() {
         entries={entries}
         onEntriesChange={setEntries}
       />
+      {orderActionError ? (
+        <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+          {orderActionError}
+        </div>
+      ) : null}
 
       {/* Customer Grid (replaces the old table) */}
       <CustomerGrid
@@ -1842,14 +1936,22 @@ export default function Page() {
         isLoading={isLoading}
         onView={(customer) => {
           setSelectedOrderFilter("All");
-          setSelected(customer);
+          setSelected({
+            name: customer.name,
+            mobile: customer.mobile,
+          });
           setIsViewOpen(true);
         }}
         onStatusView={(customer, status) => {
           setSelectedOrderFilter(status);
-          setSelected(customer);
+          setSelected({
+            name: customer.name,
+            mobile: customer.mobile,
+          });
           setIsViewOpen(true);
         }}
+        onMarkComplete={handleMarkOrderComplete}
+        updatingOrderId={updatingOrderId}
       />
 
       {/* Pagination */}
@@ -1863,38 +1965,40 @@ export default function Page() {
       />
 
       {/* Customer Detail Modal */}
-      {isViewOpen && selected && (
+      {isViewOpen && selectedCustomer && (
         <Modal
           title="Customer Details"
           onClose={() => {
             setIsViewOpen(false);
             setSelectedOrderFilter("All");
+            setSelected(null);
+            setOrderActionError("");
           }}
         >
           <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
             <p>
-              <b>Name:</b> {selected.name}
+              <b>Name:</b> {selectedCustomer.name}
             </p>
             <p>
-              <b>Mobile:</b> {selected.mobile}
+              <b>Mobile:</b> {selectedCustomer.mobile}
             </p>
             <p>
-              <b>Visits:</b> {selected.visit}
+              <b>Visits:</b> {selectedCustomer.visit}
             </p>
             <p>
-              <b>Orders:</b> {selected.orders}
+              <b>Orders:</b> {selectedCustomer.orders}
             </p>
             <p>
-              <b>Total Spent:</b> Rs. {selected.totalSpent.toFixed(2)}
+              <b>Total Spent:</b> Rs. {selectedCustomer.totalSpent.toFixed(2)}
             </p>
             <p>
-              <b>Loyalty:</b> {selected.loyalty}
+              <b>Loyalty:</b> {selectedCustomer.loyalty}
             </p>
             <p>
-              <b>Favorite Food:</b> {selected.food}
+              <b>Favorite Food:</b> {selectedCustomer.food}
             </p>
             <p>
-              <b>Last Order:</b> {selected.lastOrderLabel}
+              <b>Last Order:</b> {selectedCustomer.lastOrderLabel}
             </p>
           </div>
 
@@ -1920,6 +2024,9 @@ export default function Page() {
                 ))}
               </div>
             </div>
+            {orderActionError ? (
+              <p className="mt-3 text-sm text-red-600">{orderActionError}</p>
+            ) : null}
             {selectedRecentOrders.length === 0 ? (
               <p className="text-sm text-gray-500">No recent orders</p>
             ) : (
@@ -1944,6 +2051,20 @@ export default function Page() {
                     <p>
                       <b>Time:</b> {formatDateTime(order.time)}
                     </p>
+                    {isActiveOrderStatus(order.status) ? (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void handleMarkOrderComplete(order.id);
+                        }}
+                        disabled={updatingOrderId === order.id}
+                        className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-100 disabled:cursor-wait disabled:opacity-60"
+                      >
+                        {updatingOrderId === order.id
+                          ? "Completing..."
+                          : "Mark Complete"}
+                      </button>
+                    ) : null}
                   </div>
                 ))}
               </div>

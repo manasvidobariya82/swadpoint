@@ -243,7 +243,7 @@ export default function RegisterPage() {
         return;
       }
 
-      router.push(data?.user?.role === "admin" ? "/dashboard" : "/welcome");
+      router.push("/dashboard");
       router.refresh();
     } catch {
       setSubmitError("Unable to create account right now. Please try again.");

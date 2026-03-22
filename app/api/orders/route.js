@@ -1,6 +1,7 @@
 ﻿import { NextResponse } from "next/server";
 import pool from "@/lib/db";
 import { ensureCoreTables } from "@/lib/db-schema";
+import { syncLowStockAlert } from "@/lib/inventory-alerts";
 import { publishOrderEvent } from "@/lib/order-events";
 
 export const runtime = "nodejs";
@@ -115,6 +116,18 @@ const applyInventoryMovement = async ({
        WHERE id = $2`,
       [nextStock, inventoryItem.id],
     );
+
+    const updatedInventoryResult = await client.query(
+      `SELECT id, name, current_stock, min_stock
+       FROM inventory_items
+       WHERE id = $1
+       LIMIT 1`,
+      [inventoryItem.id],
+    );
+
+    if (updatedInventoryResult.rowCount > 0) {
+      await syncLowStockAlert(client, updatedInventoryResult.rows[0]);
+    }
 
     await client.query(
       `INSERT INTO inventory_movements (

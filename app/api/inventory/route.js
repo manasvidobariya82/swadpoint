@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import pool from "@/lib/db";
 import { ensureCoreTables } from "@/lib/db-schema";
+import { syncLowStockAlert } from "@/lib/inventory-alerts";
 
 const MAX_STOCK_VALUE = 999999;
 const MAX_PRICE_PER_UNIT = 100000;
@@ -150,6 +151,12 @@ export async function POST(request) {
     );
 
     const saved = toApiInventoryItem(result.rows[0]);
+    await syncLowStockAlert(pool, {
+      id: result.rows[0].id,
+      name: result.rows[0].name,
+      current_stock: result.rows[0].current_stock,
+      min_stock: result.rows[0].min_stock,
+    });
     return NextResponse.json(saved, { status: 201 });
   } catch (error) {
     if (error?.code === "23505") {
@@ -229,6 +236,12 @@ export async function PATCH(request) {
     }
 
     const updated = toApiInventoryItem(result.rows[0]);
+    await syncLowStockAlert(pool, {
+      id: result.rows[0].id,
+      name: result.rows[0].name,
+      current_stock: result.rows[0].current_stock,
+      min_stock: result.rows[0].min_stock,
+    });
     return NextResponse.json(updated);
   } catch {
     return NextResponse.json(
@@ -262,6 +275,11 @@ export async function DELETE(request) {
         { status: 404 }
       );
     }
+
+    await pool.query(
+      "DELETE FROM low_stock_alerts WHERE inventory_item_id = $1",
+      [id]
+    );
 
     return NextResponse.json({ success: true });
   } catch {

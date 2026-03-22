@@ -1,9 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Edit3, Plus, RefreshCw, Search, Trash2 } from "lucide-react";
+import { Toaster, toast } from "react-hot-toast";
 
 const INVENTORY_STORAGE_KEY = "restaurantInventory";
+const SETTINGS_STORAGE_KEY = "swadpointProductSettings";
 const MAX_STOCK_VALUE = 999999;
 const MAX_PRICE_PER_UNIT = 100000;
 const MAX_TEXT_LENGTH = 80;
@@ -212,6 +214,20 @@ const statusClasses = {
   Good: "bg-emerald-100 text-emerald-700",
 };
 
+const readLowStockAlertsEnabled = () => {
+  if (typeof window === "undefined") return true;
+
+  try {
+    const raw = localStorage.getItem(SETTINGS_STORAGE_KEY);
+    if (!raw) return true;
+
+    const parsed = JSON.parse(raw);
+    return parsed?.notifications?.lowStockAlerts !== false;
+  } catch {
+    return true;
+  }
+};
+
 export default function InventoryPage() {
   const [inventory, setInventory] = useState(() => readInventory());
   const [query, setQuery] = useState("");
@@ -222,6 +238,7 @@ export default function InventoryPage() {
   const [editingId, setEditingId] = useState(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const alertStateRef = useRef(new Set());
 
   const loadInventory = useCallback(async () => {
     try {
@@ -252,6 +269,35 @@ export default function InventoryPage() {
 
   useEffect(() => {
     saveInventory(inventory);
+  }, [inventory]);
+
+  useEffect(() => {
+    if (!readLowStockAlertsEnabled()) return;
+
+    const activeAlertKeys = new Set();
+    const lowStockItems = inventory.filter((item) => {
+      const status = getStockStatus(item);
+      return status === "Low" || status === "Out";
+    });
+
+    lowStockItems.forEach((item) => {
+      const status = getStockStatus(item);
+      const alertKey = `${item.id}:${status}:${item.currentStock}:${item.minStock}`;
+      activeAlertKeys.add(alertKey);
+
+      if (alertStateRef.current.has(alertKey)) return;
+
+      toast(
+        status === "Out"
+          ? `${item.name} is out of stock`
+          : `${item.name} is low on stock (${item.currentStock} ${item.unit} left)`,
+        {
+          icon: status === "Out" ? "🚨" : "⚠️",
+        },
+      );
+    });
+
+    alertStateRef.current = activeAlertKeys;
   }, [inventory]);
 
   const categories = useMemo(() => {
@@ -401,6 +447,7 @@ export default function InventoryPage() {
 
   return (
     <div className="mx-auto w-full max-w-7xl space-y-6">
+      <Toaster position="top-right" />
       <div className="rounded-2xl bg-white p-5 shadow">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>

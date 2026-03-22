@@ -1346,6 +1346,48 @@ const fetchOrdersFromApi = async () => {
   return response.json();
 };
 
+const mapOrderToCustomerHistoryItem = (order) => {
+  const items = Array.isArray(order?.items) ? order.items : [];
+
+  return {
+    id: normalizeText(order?.id, 64) || "-",
+    tableNo: normalizeText(order?.tableNo, 20) || "-",
+    total: toNumber(order?.total),
+    status: normalizeStatus(order?.status),
+    time: order?.time,
+    items: items.slice(0, 2).map((item) => ({
+      name: normalizeText(item?.name, 80) || "Item",
+      qty: Math.max(1, Math.min(99, Math.floor(toNumber(item?.qty || 1)))),
+    })),
+  };
+};
+
+const fetchCustomerOrderHistoryFromApi = async ({ name, mobile }) => {
+  const searchParams = new URLSearchParams();
+  const normalizedMobile = normalizeMobile(mobile);
+  const normalizedName = normalizeText(name, 80);
+
+  if (normalizedMobile !== "-") {
+    searchParams.set("customerMobile", normalizedMobile);
+  } else if (normalizedName) {
+    searchParams.set("customerName", normalizedName);
+  } else {
+    return [];
+  }
+
+  searchParams.set("limit", "100");
+
+  const response = await fetch(`/api/orders?${searchParams.toString()}`, {
+    cache: "no-store",
+  });
+  if (!response.ok) throw new Error("Failed to fetch customer order history");
+
+  const payload = await response.json();
+  return Array.isArray(payload)
+    ? payload.map((order) => mapOrderToCustomerHistoryItem(order))
+    : [];
+};
+
 const updateOrderStatusInApi = async (id, status) => {
   const response = await fetch("/api/orders", {
     method: "PATCH",
@@ -1710,6 +1752,9 @@ export default function Page() {
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [updatingOrderId, setUpdatingOrderId] = useState("");
   const [orderActionError, setOrderActionError] = useState("");
+  const [customerOrderHistory, setCustomerOrderHistory] = useState(null);
+  const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState("");
 
   const handleSyncNow = async () => {
     if (isSyncing) return;
@@ -1753,20 +1798,61 @@ export default function Page() {
   }, [customers, selected]);
 
   const selectedRecentOrders = useMemo(() => {
+    const availableOrders = Array.isArray(customerOrderHistory)
+      ? customerOrderHistory
+      : selectedCustomer?.recentOrders || [];
+
     if (!selectedCustomer) return [];
-    if (selectedOrderFilter === "All") return selectedCustomer.recentOrders;
+    if (selectedOrderFilter === "All") return availableOrders;
     if (selectedOrderFilter === "Active") {
-      return selectedCustomer.recentOrders.filter((order) =>
-        isActiveOrderStatus(order.status),
-      );
+      return availableOrders.filter((order) => isActiveOrderStatus(order.status));
     }
     if (selectedOrderFilter === "Completed") {
-      return selectedCustomer.recentOrders.filter(
+      return availableOrders.filter(
         (order) => normalizeStatus(order.status) === "Completed",
       );
     }
-    return selectedCustomer.recentOrders;
-  }, [selectedCustomer, selectedOrderFilter]);
+    return availableOrders;
+  }, [customerOrderHistory, selectedCustomer, selectedOrderFilter]);
+
+  useEffect(() => {
+    if (!isViewOpen || !selectedCustomer) return;
+
+    let cancelled = false;
+
+    const loadCustomerOrderHistory = async () => {
+      try {
+        setIsHistoryLoading(true);
+        setHistoryError("");
+
+        const orderHistory = await fetchCustomerOrderHistoryFromApi({
+          name: selectedCustomer.name,
+          mobile: selectedCustomer.mobile,
+        });
+
+        if (!cancelled) {
+          setCustomerOrderHistory(orderHistory);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setHistoryError(
+            error?.message || "Unable to load customer order history.",
+          );
+          setCustomerOrderHistory(null);
+        }
+      } finally {
+        if (!cancelled) {
+          setIsHistoryLoading(false);
+        }
+      }
+    };
+
+    void loadCustomerOrderHistory();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isViewOpen, selectedCustomer]);
 
   // Pagination
   const {
@@ -1936,6 +2022,8 @@ export default function Page() {
         isLoading={isLoading}
         onView={(customer) => {
           setSelectedOrderFilter("All");
+          setCustomerOrderHistory(null);
+          setHistoryError("");
           setSelected({
             name: customer.name,
             mobile: customer.mobile,
@@ -1944,6 +2032,8 @@ export default function Page() {
         }}
         onStatusView={(customer, status) => {
           setSelectedOrderFilter(status);
+          setCustomerOrderHistory(null);
+          setHistoryError("");
           setSelected({
             name: customer.name,
             mobile: customer.mobile,
@@ -1973,6 +2063,8 @@ export default function Page() {
             setSelectedOrderFilter("All");
             setSelected(null);
             setOrderActionError("");
+            setCustomerOrderHistory(null);
+            setHistoryError("");
           }}
         >
           <div className="grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
@@ -2005,7 +2097,7 @@ export default function Page() {
           <div className="mt-5">
             <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm font-semibold">
-                Recent Orders
+                Order History
                 {selectedOrderFilter !== "All" ? ` (${selectedOrderFilter})` : ""}
               </p>
               <div className="flex flex-wrap gap-2">
@@ -2027,7 +2119,13 @@ export default function Page() {
             {orderActionError ? (
               <p className="mt-3 text-sm text-red-600">{orderActionError}</p>
             ) : null}
-            {selectedRecentOrders.length === 0 ? (
+            {historyError ? (
+              <p className="mt-3 text-sm text-red-600">{historyError}</p>
+            ) : null}
+            {isHistoryLoading ? (
+              <p className="text-sm text-gray-500">Loading order history...</p>
+            ) : null}
+            {!isHistoryLoading && selectedRecentOrders.length === 0 ? (
               <p className="text-sm text-gray-500">No recent orders</p>
             ) : (
               <div className="space-y-2">

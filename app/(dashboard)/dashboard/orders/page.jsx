@@ -53,6 +53,26 @@ const deriveOrderType = (order) => {
   return "Takeaway";
 };
 
+const getPaymentMethodLabel = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "cash") return "Cash on Delivery";
+  if (normalized === "upi" || normalized === "card") return "Online Payment";
+  return "Payment";
+};
+
+const getPaymentStatusLabel = (method, status) => {
+  const normalizedMethod = String(method || "").trim().toLowerCase();
+  const normalizedStatus = String(status || "").trim().toLowerCase();
+
+  if (normalizedMethod === "cash" && normalizedStatus === "pending") {
+    return "Pay on Delivery";
+  }
+  if (normalizedStatus === "paid") return "Paid";
+  if (normalizedStatus === "failed") return "Failed";
+  if (normalizedStatus === "unpaid") return "Unpaid";
+  return "Pending";
+};
+
 const sanitizeOrderForUi = (order) => {
   const itemsList = (Array.isArray(order?.items) ? order.items : [])
     .map((item) => ({
@@ -73,6 +93,15 @@ const sanitizeOrderForUi = (order) => {
     timeIso: String(order?.time || ""),
     prepTime: String(order?.status || "").toLowerCase() === "preparing" ? 20 : null,
     tableNo: String(order?.tableNo || "NA"),
+    customerMobile: String(order?.customerMobile || "-"),
+    paymentMethod: String(order?.paymentMethod || ""),
+    paymentMethodLabel: getPaymentMethodLabel(order?.paymentMethod),
+    paymentStatus: String(order?.paymentStatus || ""),
+    paymentStatusLabel: getPaymentStatusLabel(
+      order?.paymentMethod,
+      order?.paymentStatus,
+    ),
+    placedLabel: "Placed Order",
     itemsList,
     total:
       toNumber(order?.total, 0) > 0
@@ -296,12 +325,28 @@ export default function Orders() {
                         ? ` | Table ${order.tableNo}`
                         : ""}
                     </p>
-
-                    {order.prepTime ? (
-                      <span className="inline-block mt-1 text-xs px-3 py-1 rounded-full bg-blue-100 text-blue-700">
-                        {order.prepTime} mins prep
-                      </span>
+                    <p className="text-xs text-gray-500">
+                      {order.placedLabel} | {order.paymentMethodLabel} |{" "}
+                      {order.paymentStatusLabel}
+                    </p>
+                    {order.customerMobile && order.customerMobile !== "-" ? (
+                      <p className="text-xs text-gray-500">
+                        Mobile: {order.customerMobile}
+                      </p>
                     ) : null}
+
+                    <div className="mt-1 flex flex-wrap gap-2">
+                      {order.status === "New Order" ? (
+                        <span className="inline-block text-xs px-3 py-1 rounded-full bg-emerald-100 text-emerald-700">
+                          Placed Order
+                        </span>
+                      ) : null}
+                      {order.prepTime ? (
+                        <span className="inline-block text-xs px-3 py-1 rounded-full bg-blue-100 text-blue-700">
+                          {order.prepTime} mins prep
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
 
                   <button
@@ -316,6 +361,25 @@ export default function Orders() {
 
                 {openOrder === order.id ? (
                   <div className="bg-gray-50 rounded-lg p-3 space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span>Payment method</span>
+                      <span>{order.paymentMethodLabel}</span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span>Payment status</span>
+                      <span>{order.paymentStatusLabel}</span>
+                    </div>
+                    {order.customerMobile && order.customerMobile !== "-" ? (
+                      <div className="flex justify-between text-sm">
+                        <span>Customer mobile</span>
+                        <span>{order.customerMobile}</span>
+                      </div>
+                    ) : null}
+                    <div className="flex justify-between text-sm">
+                      <span>Order state</span>
+                      <span>{order.placedLabel}</span>
+                    </div>
+                    <div className="border-t pt-2" />
                     {order.itemsList.map((item) => (
                       <div key={item.id || item.name} className="flex justify-between text-sm">
                         <span>

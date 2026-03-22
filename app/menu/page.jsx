@@ -89,6 +89,26 @@ const createUpiUrl = (upiId, payeeName, amount) =>
     payeeName
   )}&am=${amount.toFixed(2)}&cu=INR`;
 
+const getPaymentMethodLabel = (value) => {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (normalized === "cash") return "Cash on Delivery";
+  if (normalized === "upi" || normalized === "card") return "Online Payment";
+  return "Payment";
+};
+
+const getPaymentStatusLabel = (method, status) => {
+  const normalizedMethod = String(method || "").trim().toLowerCase();
+  const normalizedStatus = String(status || "").trim().toLowerCase();
+
+  if (normalizedMethod === "cash" && normalizedStatus === "pending") {
+    return "Pay on Delivery";
+  }
+  if (normalizedStatus === "paid") return "Paid";
+  if (normalizedStatus === "failed") return "Failed";
+  if (normalizedStatus === "unpaid") return "Unpaid";
+  return "Pending";
+};
+
 const sanitizeMenuItem = (item, index, idPrefix = "menu-item") => {
   if (!item || typeof item !== "object") return null;
 
@@ -357,6 +377,10 @@ function CustomerMenuContent() {
     );
   };
 
+  const removeFromCart = (id) => {
+    setCart((prev) => prev.filter((item) => item.id !== id));
+  };
+
   const openUpiApp = () => {
     if (!isUpiReady || !upiUrl) {
       alert("UPI ID is invalid. Ask restaurant to update Billing settings.");
@@ -497,6 +521,9 @@ function CustomerMenuContent() {
       amount: finalTotal,
       paymentMethod,
       paymentStatus: order.paymentStatus,
+      tableNo,
+      message:
+        "Order placed successfully. Restaurant admin has received your order.",
     });
     setCart([]);
     setCustomerName("");
@@ -620,6 +647,13 @@ function CustomerMenuContent() {
                           className="rounded border border-gray-300 px-2 py-1 text-sm"
                         >
                           +
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeFromCart(item.id)}
+                          className="ml-2 text-xs font-medium text-red-600 hover:text-red-700"
+                        >
+                          Remove
                         </button>
                       </div>
                     </div>
@@ -751,13 +785,24 @@ function CustomerMenuContent() {
                   Order placed successfully
                 </p>
                 <p className="mt-1 text-xs text-green-700">
+                  {confirmation.message}
+                </p>
+                <p className="mt-1 text-xs text-green-700">
                   Order ID: {confirmation.orderId}
                 </p>
                 <p className="text-xs text-green-700">
-                  Payment method: {confirmation.paymentMethod}
+                  Table: {confirmation.tableNo}
                 </p>
                 <p className="text-xs text-green-700">
-                  Payment status: {confirmation.paymentStatus}
+                  Payment method:{" "}
+                  {getPaymentMethodLabel(confirmation.paymentMethod)}
+                </p>
+                <p className="text-xs text-green-700">
+                  Payment status:{" "}
+                  {getPaymentStatusLabel(
+                    confirmation.paymentMethod,
+                    confirmation.paymentStatus,
+                  )}
                 </p>
                 {confirmation.paymentId && (
                   <p className="text-xs text-green-700">

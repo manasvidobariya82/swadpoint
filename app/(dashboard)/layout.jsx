@@ -1,21 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import Header from "../../components/ui/Header";
 import Sidebar from "./Sidebar";
 
-const NON_ADMIN_ALLOWED_ROUTES = ["/dashboard", "/dashboard/my-account", "/dashboard/logout"];
-
-const canAccessDashboardRoute = (role, pathname) => {
-  if (!pathname) return true;
-  if (role === "admin") return true;
-  return NON_ADMIN_ALLOWED_ROUTES.includes(pathname);
-};
-
 export default function DashboardLayout({ children }) {
   const router = useRouter();
-  const pathname = usePathname();
   const [user, setUser] = useState(null);
   const [ready, setReady] = useState(false);
 
@@ -68,21 +59,11 @@ export default function DashboardLayout({ children }) {
     };
   }, [router]);
 
-  useEffect(() => {
-    if (!ready || !user) return;
-    if (canAccessDashboardRoute(user.role, pathname)) return;
-    router.replace("/dashboard");
-  }, [pathname, ready, router, user]);
-
   if (!ready) {
     return null;
   }
 
   if (!user) {
-    return null;
-  }
-
-  if (!canAccessDashboardRoute(user.role, pathname)) {
     return null;
   }
  

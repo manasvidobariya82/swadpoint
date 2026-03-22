@@ -68,6 +68,76 @@ const normalizeOptionalTableNo = (value) => {
   return cleaned || "";
 };
 
+const normalizeInventoryKey = (value) =>
+  String(value || "")
+    .trim()
+    .replace(/\s+/g, " ")
+    .toLowerCase();
+
+const applyInventoryMovement = async ({
+  client,
+  orderId,
+  items,
+  movementType,
+}) => {
+  let appliedCount = 0;
+  const normalizedItems = (Array.isArray(items) ? items : []).map((item) => ({
+    name: sanitizeText(item?.name, 80),
+    qty: Math.max(1, Math.floor(toNumber(item?.qty || 1))),
+  }));
+
+  for (const item of normalizedItems) {
+    const inventoryKey = normalizeInventoryKey(item.name);
+    if (!inventoryKey) continue;
+
+    const inventoryResult = await client.query(
+      `SELECT id, name, current_stock
+       FROM inventory_items
+       WHERE LOWER(REGEXP_REPLACE(TRIM(name), '\s+', ' ', 'g')) = $1
+       ORDER BY last_updated DESC, id ASC
+       LIMIT 1`,
+      [inventoryKey],
+    );
+
+    if (inventoryResult.rowCount === 0) continue;
+
+    const inventoryItem = inventoryResult.rows[0];
+    const previousStock = Number(inventoryItem.current_stock || 0);
+    const nextStock =
+      movementType === "restore"
+        ? previousStock + item.qty
+        : Math.max(0, previousStock - item.qty);
+
+    await client.query(
+      `UPDATE inventory_items
+       SET current_stock = $1,
+           last_updated = NOW()
+       WHERE id = $2`,
+      [nextStock, inventoryItem.id],
+    );
+
+    await client.query(
+      `INSERT INTO inventory_movements (
+         order_id, inventory_item_id, menu_item_name, quantity_change,
+         stock_before, stock_after, movement_type, created_at
+       ) VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())`,
+      [
+        orderId,
+        inventoryItem.id,
+        inventoryItem.name || item.name,
+        movementType === "restore" ? item.qty : item.qty * -1,
+        previousStock,
+        nextStock,
+        movementType,
+      ],
+    );
+
+    appliedCount += 1;
+  }
+
+  return appliedCount;
+};
+
 const sanitizeOrderItem = (item) => {
   if (!item || typeof item !== "object") return null;
 
@@ -151,9 +221,14 @@ const toApiOrder = (orderRow, itemRows) => ({
   paymentMethod: orderRow.payment_method || "UPI",
   paymentId: orderRow.payment_id || "-",
   time: orderRow.order_time || orderRow.created_at,
+  acceptedAt: orderRow.accepted_at || "",
+  preparingAt: orderRow.preparing_at || "",
   invoiceId: orderRow.invoice_id || "",
   invoiceGeneratedAt: orderRow.invoice_generated_at || "",
   completedAt: orderRow.completed_at || "",
+  cancelledAt: orderRow.cancelled_at || "",
+  inventoryDeductedAt: orderRow.inventory_deducted_at || "",
+  inventoryRestockedAt: orderRow.inventory_restocked_at || "",
   paymentTransferred: Boolean(orderRow.payment_transferred),
   paymentTransferredAt: orderRow.payment_transferred_at || "",
 });
@@ -214,7 +289,9 @@ export async function GET(request) {
     const ordersResult = await pool.query(
       `SELECT id, table_no, customer_name, customer_mobile, total, status,
               payment_status, payment_method, payment_id, invoice_id,
-              invoice_generated_at, completed_at, payment_transferred,
+              invoice_generated_at, accepted_at, preparing_at, completed_at,
+              cancelled_at, inventory_deducted_at, inventory_restocked_at,
+              payment_transferred,
               payment_transferred_at, created_at, order_time
        FROM orders
        ${whereSql}
@@ -279,13 +356,16 @@ export async function POST(request) {
       `INSERT INTO orders (
          id, table_number, order_type, status, payment_status, table_no,
          customer_name, customer_mobile, total, payment_method, payment_id,
-         invoice_id, invoice_generated_at, completed_at, payment_transferred,
+         invoice_id, invoice_generated_at, accepted_at, preparing_at,
+         completed_at, cancelled_at, inventory_deducted_at, inventory_restocked_at,
+         payment_transferred,
          payment_transferred_at, updated_at, order_time
        ) VALUES (
          $1, $2, $3, $4, $5, $6,
          $7, $8, $9, $10, $11,
          $12, $13, $14, $15,
-         $16, NOW(), $17
+         $16, $17, $18, $19,
+         $20, $21, NOW(), $22
        )`,
       [
         order.id,
@@ -301,7 +381,12 @@ export async function POST(request) {
         order.paymentId,
         order.invoiceId,
         order.invoiceGeneratedAt,
+        null,
+        null,
         order.completedAt,
+        null,
+        null,
+        null,
         order.paymentTransferred,
         order.paymentTransferredAt,
         order.time,
@@ -344,13 +429,62 @@ export async function POST(request) {
       );
     }
 
+    const deductedItemCount = await applyInventoryMovement({
+      client,
+      orderId: order.id,
+      items: order.items,
+      movementType: "deduct",
+    });
+
+    if (deductedItemCount > 0) {
+      await client.query(
+        `UPDATE orders
+         SET inventory_deducted_at = NOW(),
+             updated_at = NOW()
+         WHERE id = $1`,
+        [order.id],
+      );
+    }
+
     await client.query("COMMIT");
+    const savedOrderResult = await pool.query(
+      `SELECT id, table_no, customer_name, customer_mobile, total, status,
+              payment_status, payment_method, payment_id, invoice_id,
+              invoice_generated_at, accepted_at, preparing_at, completed_at,
+              cancelled_at, inventory_deducted_at, inventory_restocked_at,
+              payment_transferred, payment_transferred_at, created_at, order_time
+       FROM orders
+       WHERE id = $1
+       LIMIT 1`,
+      [order.id],
+    );
+
+    const savedItemsResult = await pool.query(
+      `SELECT order_id, item_id, item_name, quantity, price, name, qty, line_total, position
+       FROM order_items
+       WHERE order_id = $1
+       ORDER BY position ASC, id ASC`,
+      [order.id],
+    );
+
+    const savedItems = savedItemsResult.rows.map((row) => ({
+      id: row.item_id || undefined,
+      name: row.item_name || row.name || "Item",
+      qty: Number(row.quantity || row.qty || 1),
+      price: Number(row.price || 0),
+      lineTotal: Number(
+        row.line_total ||
+          Number(row.price || 0) * Number(row.quantity || row.qty || 1),
+      ),
+    }));
+
+    const savedOrder = toApiOrder(savedOrderResult.rows[0], savedItems);
     publishOrderEvent({
       type: "order.created",
       orderId: order.id,
     });
 
-    return NextResponse.json(order, { status: 201 });
+    return NextResponse.json(savedOrder, { status: 201 });
   } catch (error) {
     await client.query("ROLLBACK").catch(() => {});
 
@@ -368,6 +502,8 @@ export async function POST(request) {
 }
 
 export async function PATCH(request) {
+  const client = await pool.connect();
+
   try {
     await ensureCoreTables();
 
@@ -380,7 +516,26 @@ export async function PATCH(request) {
       );
     }
 
+    await client.query("BEGIN");
+
+    const existingOrderResult = await client.query(
+      `SELECT id, status, payment_method, payment_status, accepted_at,
+              preparing_at, completed_at, cancelled_at,
+              inventory_deducted_at, inventory_restocked_at
+       FROM orders
+       WHERE id = $1
+       LIMIT 1`,
+      [id]
+    );
+
+    if (existingOrderResult.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return NextResponse.json({ error: "Order not found" }, { status: 404 });
+    }
+
+    const existingOrder = existingOrderResult.rows[0];
     const updates = {};
+    const nowIso = new Date().toISOString();
 
     if (Object.prototype.hasOwnProperty.call(body || {}, "status")) {
       const status = sanitizeText(body?.status, 20);
@@ -391,8 +546,33 @@ export async function PATCH(request) {
         );
       }
       updates.status = status;
+      if (status === "Preparing") {
+        updates.acceptedAt = existingOrder.accepted_at || nowIso;
+        updates.preparingAt = existingOrder.preparing_at || nowIso;
+        updates.cancelledAt = null;
+      }
       if (status === "Completed") {
-        updates.completedAt = normalizeDate(body?.completedAt);
+        updates.acceptedAt = existingOrder.accepted_at || nowIso;
+        updates.preparingAt = existingOrder.preparing_at || nowIso;
+        updates.completedAt = body?.completedAt
+          ? normalizeDate(body?.completedAt)
+          : nowIso;
+        updates.cancelledAt = null;
+        if (
+          !Object.prototype.hasOwnProperty.call(body || {}, "paymentStatus") &&
+          normalizePaymentMethod(existingOrder.payment_method) === "Cash"
+        ) {
+          updates.paymentStatus = "Paid";
+        }
+      }
+      if (status === "Cancelled") {
+        updates.cancelledAt = nowIso;
+        if (
+          existingOrder.inventory_deducted_at &&
+          !existingOrder.inventory_restocked_at
+        ) {
+          updates.inventoryRestockedAt = nowIso;
+        }
       }
     }
 
@@ -429,6 +609,28 @@ export async function PATCH(request) {
       updates.completedAt = body?.completedAt ? normalizeDate(body.completedAt) : null;
     }
 
+    if (Object.prototype.hasOwnProperty.call(body || {}, "acceptedAt")) {
+      updates.acceptedAt = body?.acceptedAt ? normalizeDate(body.acceptedAt) : null;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body || {}, "preparingAt")) {
+      updates.preparingAt = body?.preparingAt
+        ? normalizeDate(body.preparingAt)
+        : null;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body || {}, "cancelledAt")) {
+      updates.cancelledAt = body?.cancelledAt
+        ? normalizeDate(body.cancelledAt)
+        : null;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(body || {}, "inventoryRestockedAt")) {
+      updates.inventoryRestockedAt = body?.inventoryRestockedAt
+        ? normalizeDate(body.inventoryRestockedAt)
+        : null;
+    }
+
     if (Object.prototype.hasOwnProperty.call(body || {}, "paymentTransferred")) {
       updates.paymentTransferred = normalizeBoolean(body?.paymentTransferred);
     }
@@ -440,6 +642,7 @@ export async function PATCH(request) {
     }
 
     if (Object.keys(updates).length === 0) {
+      await client.query("ROLLBACK");
       return NextResponse.json(
         { error: "No valid fields provided for update" },
         { status: 400 }
@@ -474,9 +677,25 @@ export async function PATCH(request) {
       fields.push(`invoice_generated_at = $${index++}`);
       values.push(updates.invoiceGeneratedAt);
     }
+    if (Object.prototype.hasOwnProperty.call(updates, "acceptedAt")) {
+      fields.push(`accepted_at = $${index++}`);
+      values.push(updates.acceptedAt);
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "preparingAt")) {
+      fields.push(`preparing_at = $${index++}`);
+      values.push(updates.preparingAt);
+    }
     if (Object.prototype.hasOwnProperty.call(updates, "completedAt")) {
       fields.push(`completed_at = $${index++}`);
       values.push(updates.completedAt);
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "cancelledAt")) {
+      fields.push(`cancelled_at = $${index++}`);
+      values.push(updates.cancelledAt);
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "inventoryRestockedAt")) {
+      fields.push(`inventory_restocked_at = $${index++}`);
+      values.push(updates.inventoryRestockedAt);
     }
     if (Object.prototype.hasOwnProperty.call(updates, "paymentTransferred")) {
       fields.push(`payment_transferred = $${index++}`);
@@ -498,18 +717,16 @@ export async function PATCH(request) {
       WHERE id = $${idParamIndex}
       RETURNING id, table_no, customer_name, customer_mobile, total, status,
                 payment_status, payment_method, payment_id, invoice_id,
-                invoice_generated_at, completed_at, payment_transferred,
+                invoice_generated_at, accepted_at, preparing_at, completed_at,
+                cancelled_at, inventory_deducted_at, inventory_restocked_at,
+                payment_transferred,
                 payment_transferred_at, created_at, order_time
     `;
 
-    const updatedResult = await pool.query(updateQuery, values);
-    if (updatedResult.rowCount === 0) {
-      return NextResponse.json({ error: "Order not found" }, { status: 404 });
-    }
-
+    const updatedResult = await client.query(updateQuery, values);
     const orderRow = updatedResult.rows[0];
 
-    const itemsResult = await pool.query(
+    const itemsResult = await client.query(
       `SELECT order_id, item_id, item_name, quantity, price, name, qty, line_total, position
        FROM order_items
        WHERE order_id = $1
@@ -525,6 +742,21 @@ export async function PATCH(request) {
       lineTotal: Number(row.line_total || Number(row.price || 0) * Number(row.quantity || row.qty || 1)),
     }));
 
+    if (
+      updates.status === "Cancelled" &&
+      existingOrder.inventory_deducted_at &&
+      !existingOrder.inventory_restocked_at
+    ) {
+      await applyInventoryMovement({
+        client,
+        orderId: id,
+        items,
+        movementType: "restore",
+      });
+    }
+
+    await client.query("COMMIT");
+
     const updatedOrder = toApiOrder(orderRow, items);
     publishOrderEvent({
       type: "order.updated",
@@ -533,9 +765,12 @@ export async function PATCH(request) {
 
     return NextResponse.json(updatedOrder);
   } catch (error) {
+    await client.query("ROLLBACK").catch(() => {});
     return NextResponse.json(
       { error: error.message || "Failed to update order" },
       { status: 500 }
     );
+  } finally {
+    client.release();
   }
 }

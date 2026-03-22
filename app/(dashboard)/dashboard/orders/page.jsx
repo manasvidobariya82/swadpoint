@@ -28,6 +28,19 @@ const toNumber = (value, fallback = 0) => {
   return Number.isFinite(parsed) ? parsed : fallback;
 };
 
+const formatAbsoluteDateTime = (value) => {
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) return "-";
+
+  return new Date(timestamp).toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+};
+
 const formatRelativeTime = (value) => {
   const timestamp = new Date(value).getTime();
   if (!Number.isFinite(timestamp)) return "just now";
@@ -102,6 +115,10 @@ const sanitizeOrderForUi = (order) => {
       order?.paymentStatus,
     ),
     placedLabel: "Placed Order",
+    acceptedAt: String(order?.acceptedAt || ""),
+    preparingAt: String(order?.preparingAt || ""),
+    completedAt: String(order?.completedAt || ""),
+    cancelledAt: String(order?.cancelledAt || ""),
     itemsList,
     total:
       toNumber(order?.total, 0) > 0
@@ -220,6 +237,9 @@ export default function Orders() {
 
       if (uiStatus === "Preparing") {
         setStatus("Preparing");
+      }
+      if (uiStatus === "Order Completed") {
+        setStatus("Order Completed");
       }
     } catch (updateError) {
       setError(updateError?.message || "Unable to update order status.");
@@ -379,6 +399,34 @@ export default function Orders() {
                       <span>Order state</span>
                       <span>{order.placedLabel}</span>
                     </div>
+                    <div className="flex justify-between text-sm">
+                      <span>Placed at</span>
+                      <span>{formatAbsoluteDateTime(order.timeIso)}</span>
+                    </div>
+                    {order.acceptedAt ? (
+                      <div className="flex justify-between text-sm">
+                        <span>Accepted at</span>
+                        <span>{formatAbsoluteDateTime(order.acceptedAt)}</span>
+                      </div>
+                    ) : null}
+                    {order.preparingAt ? (
+                      <div className="flex justify-between text-sm">
+                        <span>Preparing at</span>
+                        <span>{formatAbsoluteDateTime(order.preparingAt)}</span>
+                      </div>
+                    ) : null}
+                    {order.completedAt ? (
+                      <div className="flex justify-between text-sm">
+                        <span>Completed at</span>
+                        <span>{formatAbsoluteDateTime(order.completedAt)}</span>
+                      </div>
+                    ) : null}
+                    {order.cancelledAt ? (
+                      <div className="flex justify-between text-sm">
+                        <span>Cancelled at</span>
+                        <span>{formatAbsoluteDateTime(order.cancelledAt)}</span>
+                      </div>
+                    ) : null}
                     <div className="border-t pt-2" />
                     {order.itemsList.map((item) => (
                       <div key={item.id || item.name} className="flex justify-between text-sm">
@@ -403,6 +451,16 @@ export default function Orders() {
                     className="w-full sm:w-auto px-4 py-2 bg-green-500 text-white rounded-lg text-sm disabled:opacity-60"
                   >
                     Accept Order
+                  </button>
+                ) : null}
+
+                {order.status === "Preparing" ? (
+                  <button
+                    onClick={() => updateStatus(order.id, "Order Completed")}
+                    disabled={submitting}
+                    className="w-full sm:w-auto px-4 py-2 bg-emerald-600 text-white rounded-lg text-sm disabled:opacity-60"
+                  >
+                    Mark Complete
                   </button>
                 ) : null}
               </div>

@@ -38,6 +38,36 @@ const fetchPaymentConfigFromApi = async () => {
   return response.json();
 };
 
+const patchPaymentInApi = async (payload) => {
+  const response = await fetch("/api/payments", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(data?.error || "Failed to update payment");
+  }
+
+  return data;
+};
+
+const patchOrderInApi = async (payload) => {
+  const response = await fetch("/api/orders", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  const data = await response.json().catch(() => null);
+  if (!response.ok) {
+    throw new Error(data?.error || "Failed to update order");
+  }
+
+  return data;
+};
+
 const savePaymentConfigToApi = async (payload) => {
   const response = await fetch("/api/payment-config", {
     method: "PUT",
@@ -118,6 +148,13 @@ const sanitizeOrderRecord = (order) => {
     total: Math.max(0, Math.min(MAX_PAYMENT_AMOUNT, toNumber(order.total))),
     items: Array.isArray(order.items) ? order.items : [],
   };
+};
+
+const mapOrderPaymentStatusToBillingStatus = (value) => {
+  const normalized = normalizeText(value, 20).toLowerCase();
+  if (normalized === "paid") return "success";
+  if (normalized === "failed") return "failed";
+  return "pending";
 };
 
 const readCachedArray = (key) => {
@@ -253,6 +290,7 @@ export default function BillingPage() {
   const [statusFilter, setStatusFilter] = useState("All");
   const [isLoading, setIsLoading] = useState(true);
   const [lastSyncedAt, setLastSyncedAt] = useState("");
+  const [isReconcilingId, setIsReconcilingId] = useState("");
   const [configErrors, setConfigErrors] = useState({
     upiId: "",
     payeeName: "",
@@ -310,14 +348,59 @@ export default function BillingPage() {
     localStorage.setItem(ORDERS_CACHE_KEY, JSON.stringify(ordersById));
   }, [ordersById]);
 
+  const reconciledRows = useMemo(() => {
+    const paymentRows = payments.map((payment) => ({
+      ...payment,
+      isSynthetic: false,
+    }));
+
+    const rowsByOrderId = new Map();
+    paymentRows.forEach((payment) => {
+      const orderId = normalizeText(payment.orderId, 64);
+      if (orderId) rowsByOrderId.set(orderId, payment);
+    });
+
+    Object.values(ordersById || {}).forEach((order) => {
+      const normalizedOrder = sanitizeOrderRecord(order);
+      const orderId = normalizeText(normalizedOrder?.id, 64);
+      if (!orderId || rowsByOrderId.has(orderId)) return;
+
+      paymentRows.push({
+        id: `COD-${orderId}`,
+        orderId,
+        customerName: normalizedOrder.customerName,
+        customerMobile: normalizedOrder.customerMobile,
+        tableNo: normalizedOrder.tableNo,
+        paymentMethod: normalizedOrder.paymentMethod,
+        status: mapOrderPaymentStatusToBillingStatus(normalizedOrder.paymentStatus),
+        amount: normalizedOrder.total,
+        timestamp: normalizeDate(
+          normalizedOrder.completedAt ||
+            normalizedOrder.time ||
+            new Date().toISOString(),
+        ),
+        transactionId: "",
+        upiId: "",
+        items: [],
+        isSynthetic: true,
+      });
+    });
+
+    return paymentRows.sort(
+      (a, b) => toTimestamp(b?.timestamp) - toTimestamp(a?.timestamp),
+    );
+  }, [ordersById, payments]);
+
   const filteredPayments = useMemo(() => {
-    if (!STATUS_FILTER_OPTIONS.includes(statusFilter)) return payments;
-    if (statusFilter === "All") return payments;
-    return payments.filter((payment) => payment.status === statusFilter);
-  }, [payments, statusFilter]);
+    if (!STATUS_FILTER_OPTIONS.includes(statusFilter)) return reconciledRows;
+    if (statusFilter === "All") return reconciledRows;
+    return reconciledRows.filter((payment) => payment.status === statusFilter);
+  }, [reconciledRows, statusFilter]);
 
   const stats = useMemo(() => {
-    const successPayments = payments.filter((payment) => payment.status === "success");
+    const successPayments = reconciledRows.filter(
+      (payment) => payment.status === "success",
+    );
     const totalAmount = successPayments.reduce(
       (sum, payment) => sum + Number(payment.amount || 0),
       0
@@ -328,12 +411,84 @@ export default function BillingPage() {
       .reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
 
     return {
-      totalTransactions: payments.length,
+      totalTransactions: reconciledRows.length,
       successTransactions: successPayments.length,
       totalAmount,
       todayAmount,
     };
-  }, [payments]);
+  }, [reconciledRows]);
+
+  const handleReconcilePayment = async (payment, nextStatus) => {
+    if (!payment || isReconcilingId === payment.id) return;
+
+    setIsReconcilingId(payment.id);
+
+    try {
+      const matchingOrder = ordersById[String(payment.orderId || "")] || null;
+      const paymentMethod = normalizeText(
+        payment.paymentMethod || matchingOrder?.paymentMethod || "Cash",
+        20,
+      );
+
+      if (payment.isSynthetic) {
+        const syntheticId = `PAY-${Date.now()}-${normalizeText(payment.orderId, 32)}`;
+        await fetch("/api/payments", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            id: syntheticId,
+            orderId: payment.orderId,
+            customerName: payment.customerName,
+            customerMobile: payment.customerMobile,
+            tableNo: payment.tableNo,
+            amount: payment.amount,
+            paymentMethod,
+            status: nextStatus,
+            timestamp: new Date().toISOString(),
+            transactionId:
+              nextStatus === "success" ? `COD-${Date.now()}` : "",
+            items: Array.isArray(matchingOrder?.items)
+              ? matchingOrder.items.map((item) => `${item.name} x${item.qty}`)
+              : [],
+          }),
+        }).then(async (response) => {
+          const data = await response.json().catch(() => null);
+          if (!response.ok) {
+            throw new Error(data?.error || "Failed to create payment");
+          }
+          return data;
+        });
+      } else {
+        await patchPaymentInApi({
+          id: payment.id,
+          status: nextStatus,
+          timestamp: new Date().toISOString(),
+          transactionId:
+            nextStatus === "success"
+              ? payment.transactionId || `REC-${Date.now()}`
+              : payment.transactionId || "",
+        });
+      }
+
+      if (payment.orderId) {
+        await patchOrderInApi({
+          id: payment.orderId,
+          paymentStatus:
+            nextStatus === "success"
+              ? "Paid"
+              : nextStatus === "failed"
+                ? "Failed"
+                : "Pending",
+        });
+      }
+
+      await loadData();
+    } catch (error) {
+      alert(error?.message || "Failed to reconcile payment.");
+    } finally {
+      setIsReconcilingId("");
+    }
+  };
 
   const saveConfig = () => {
     const upiId = normalizeText(paymentConfig.upiId, MAX_UPI_ID_LENGTH);
@@ -547,6 +702,9 @@ export default function BillingPage() {
                     <th className="px-3 py-2 text-left font-semibold text-gray-600">
                       Invoice
                     </th>
+                    <th className="px-3 py-2 text-left font-semibold text-gray-600">
+                      Actions
+                    </th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-100">
@@ -565,6 +723,7 @@ export default function BillingPage() {
                       </td>
                       <td className="px-3 py-2 text-gray-700">
                         {payment.paymentMethod}
+                        {payment.isSynthetic ? " (order)" : ""}
                       </td>
                       <td className="px-3 py-2 text-gray-700">
                         Rs. {Number(payment.amount || 0).toFixed(2)}
@@ -606,6 +765,50 @@ export default function BillingPage() {
                           >
                             Download
                           </button>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2">
+                        <div className="flex flex-wrap gap-2">
+                          {payment.status !== "success" ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void handleReconcilePayment(payment, "success");
+                              }}
+                              disabled={isReconcilingId === payment.id}
+                              className="rounded border border-green-200 px-2 py-1 text-xs text-green-700 hover:bg-green-50 disabled:opacity-60"
+                            >
+                              {isReconcilingId === payment.id
+                                ? "Saving..."
+                                : payment.paymentMethod === "Cash"
+                                  ? "Mark Collected"
+                                  : "Mark Paid"}
+                            </button>
+                          ) : null}
+                          {payment.status !== "failed" ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void handleReconcilePayment(payment, "failed");
+                              }}
+                              disabled={isReconcilingId === payment.id}
+                              className="rounded border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-60"
+                            >
+                              Mark Failed
+                            </button>
+                          ) : null}
+                          {payment.status !== "pending" ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                void handleReconcilePayment(payment, "pending");
+                              }}
+                              disabled={isReconcilingId === payment.id}
+                              className="rounded border border-yellow-200 px-2 py-1 text-xs text-yellow-700 hover:bg-yellow-50 disabled:opacity-60"
+                            >
+                              Mark Pending
+                            </button>
+                          ) : null}
                         </div>
                       </td>
                     </tr>

@@ -195,6 +195,23 @@ export default function Orders() {
     loadOrders();
   }, [loadOrders]);
 
+  useEffect(() => {
+    const handleRealtimeOrderEvent = (event) => {
+      const payload = event?.detail;
+      if (!payload || payload.type !== "order.created") return;
+      void loadOrders();
+    };
+
+    window.addEventListener("swadpoint-order-event", handleRealtimeOrderEvent);
+
+    return () => {
+      window.removeEventListener(
+        "swadpoint-order-event",
+        handleRealtimeOrderEvent,
+      );
+    };
+  }, [loadOrders]);
+
   const filteredOrders = useMemo(
     () => orders.filter((order) => order.type === orderType && order.status === status),
     [orders, orderType, status]

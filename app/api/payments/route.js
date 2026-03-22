@@ -83,6 +83,13 @@ const toApiPayment = (row) => {
   }).payment;
 };
 
+const mapPaymentStatusToOrderPaymentStatus = (value) => {
+  const normalized = sanitizeText(value, 20).toLowerCase();
+  if (normalized === "success") return "Paid";
+  if (normalized === "failed") return "Failed";
+  return "Pending";
+};
+
 export async function GET() {
   try {
     await ensureCoreTables();
@@ -163,6 +170,20 @@ export async function POST(request) {
     );
 
     const saved = toApiPayment(insertResult.rows[0]);
+    if (saved.orderId) {
+      await pool.query(
+        `UPDATE orders
+         SET payment_status = $1,
+             payment_method = $2,
+             updated_at = NOW()
+         WHERE id = $3`,
+        [
+          mapPaymentStatusToOrderPaymentStatus(saved.status),
+          saved.paymentMethod,
+          saved.orderId,
+        ]
+      );
+    }
     return NextResponse.json(saved, { status: 201 });
   } catch (error) {
     if (error?.code === "23505") {
@@ -174,6 +195,124 @@ export async function POST(request) {
 
     return NextResponse.json(
       { error: "Failed to save payment" },
+      { status: 500 }
+    );
+  }
+}
+
+export async function PATCH(request) {
+  try {
+    await ensureCoreTables();
+
+    const payload = await request.json();
+    const id = sanitizeText(payload?.id, 64);
+    if (!id) {
+      return NextResponse.json({ error: "Payment id is required" }, { status: 400 });
+    }
+
+    const updates = {};
+
+    if (Object.prototype.hasOwnProperty.call(payload || {}, "status")) {
+      const status = sanitizeText(payload?.status, 20).toLowerCase();
+      if (!PAYMENT_STATUSES.includes(status)) {
+        return NextResponse.json(
+          { error: `Invalid payment status. Allowed values: ${PAYMENT_STATUSES.join(", ")}` },
+          { status: 400 }
+        );
+      }
+      updates.status = status;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(payload || {}, "paymentMethod")) {
+      const paymentMethod = sanitizeText(payload?.paymentMethod, 20);
+      if (!PAYMENT_METHODS.includes(paymentMethod)) {
+        return NextResponse.json(
+          { error: `Invalid payment method. Allowed values: ${PAYMENT_METHODS.join(", ")}` },
+          { status: 400 }
+        );
+      }
+      updates.paymentMethod = paymentMethod;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(payload || {}, "timestamp")) {
+      updates.timestamp = normalizeDate(payload?.timestamp);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(payload || {}, "transactionId")) {
+      updates.transactionId = sanitizeText(payload?.transactionId, 80);
+    }
+
+    if (Object.prototype.hasOwnProperty.call(payload || {}, "upiId")) {
+      updates.upiId = sanitizeText(payload?.upiId, 80);
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return NextResponse.json(
+        { error: "No valid payment fields provided for update" },
+        { status: 400 }
+      );
+    }
+
+    const fields = [];
+    const values = [];
+    let index = 1;
+
+    if (Object.prototype.hasOwnProperty.call(updates, "status")) {
+      fields.push(`status = $${index++}`);
+      values.push(updates.status);
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "paymentMethod")) {
+      fields.push(`payment_method = $${index++}`);
+      values.push(updates.paymentMethod);
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "timestamp")) {
+      fields.push(`payment_timestamp = $${index++}`);
+      values.push(updates.timestamp);
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "transactionId")) {
+      fields.push(`transaction_id = $${index++}`);
+      values.push(updates.transactionId);
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, "upiId")) {
+      fields.push(`upi_id = $${index++}`);
+      values.push(updates.upiId);
+    }
+
+    values.push(id);
+
+    const updateResult = await pool.query(
+      `UPDATE payments
+       SET ${fields.join(", ")}
+       WHERE id = $${index}
+       RETURNING id, order_id, customer_name, customer_mobile, table_no, amount,
+                 payment_method, status, payment_timestamp, transaction_id, upi_id, items`,
+      values
+    );
+
+    if (updateResult.rowCount === 0) {
+      return NextResponse.json({ error: "Payment not found" }, { status: 404 });
+    }
+
+    const saved = toApiPayment(updateResult.rows[0]);
+    if (saved.orderId) {
+      await pool.query(
+        `UPDATE orders
+         SET payment_status = $1,
+             payment_method = $2,
+             updated_at = NOW()
+         WHERE id = $3`,
+        [
+          mapPaymentStatusToOrderPaymentStatus(saved.status),
+          saved.paymentMethod,
+          saved.orderId,
+        ]
+      );
+    }
+
+    return NextResponse.json(saved);
+  } catch (error) {
+    return NextResponse.json(
+      { error: error.message || "Failed to update payment" },
       { status: 500 }
     );
   }

@@ -17,7 +17,7 @@ const DASHBOARD_REFRESH_INTERVAL_MS = 5000;
 
 const createUpiUrl = (upiId, payeeName, amount = 1) =>
   `upi://pay?pa=${encodeURIComponent(upiId)}&pn=${encodeURIComponent(
-    payeeName
+    payeeName,
   )}&am=${Number(amount).toFixed(2)}&cu=INR`;
 
 const fetchPaymentsFromApi = async () => {
@@ -99,10 +99,13 @@ const toTimestamp = (value) => {
 };
 
 const normalizeId = (value) => String(value || "").trim();
-const isValidUpiId = (value) => UPI_ID_REGEX.test(normalizeText(value, MAX_UPI_ID_LENGTH));
+const isValidUpiId = (value) =>
+  UPI_ID_REGEX.test(normalizeText(value, MAX_UPI_ID_LENGTH));
 const normalizeDate = (value) => {
   const timestamp = toTimestamp(value);
-  return timestamp ? new Date(timestamp).toISOString() : new Date().toISOString();
+  return timestamp
+    ? new Date(timestamp).toISOString()
+    : new Date().toISOString();
 };
 
 const sanitizePaymentRecord = (payment, index = 0) => {
@@ -113,7 +116,10 @@ const sanitizePaymentRecord = (payment, index = 0) => {
   const status = PAYMENT_STATUSES.includes(statusRaw) ? statusRaw : "pending";
   const methodRaw = normalizeText(payment.paymentMethod, 20);
   const paymentMethod = PAYMENT_METHODS.includes(methodRaw) ? methodRaw : "UPI";
-  const amount = Math.max(0, Math.min(MAX_PAYMENT_AMOUNT, toNumber(payment.amount)));
+  const amount = Math.max(
+    0,
+    Math.min(MAX_PAYMENT_AMOUNT, toNumber(payment.amount)),
+  );
 
   return {
     ...payment,
@@ -214,7 +220,7 @@ const mergePayments = (current, incoming) => {
   });
 
   return Array.from(mergedById.values()).sort(
-    (a, b) => toTimestamp(b?.timestamp) - toTimestamp(a?.timestamp)
+    (a, b) => toTimestamp(b?.timestamp) - toTimestamp(a?.timestamp),
   );
 };
 
@@ -278,16 +284,19 @@ const buildInvoiceFromPayment = (payment, order) => {
 
 export default function BillingPage() {
   const [payments, setPayments] = useState(() =>
-    readCachedArray(PAYMENTS_CACHE_KEY)
+    readCachedArray(PAYMENTS_CACHE_KEY),
   );
   const [ordersById, setOrdersById] = useState(() =>
-    readCachedObject(ORDERS_CACHE_KEY)
+    readCachedObject(ORDERS_CACHE_KEY),
   );
   const [paymentConfig, setPaymentConfig] = useState({
     upiId: "swadpoint@upi",
     payeeName: "SwadPoint Restaurant",
   });
   const [statusFilter, setStatusFilter] = useState("All");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [refreshInterval, setRefreshInterval] = useState(30);
   const [isLoading, setIsLoading] = useState(true);
   const [lastSyncedAt, setLastSyncedAt] = useState("");
   const [isReconcilingId, setIsReconcilingId] = useState("");
@@ -297,11 +306,12 @@ export default function BillingPage() {
   });
 
   const loadData = async () => {
-    const [paymentsResult, ordersResult, paymentConfigResult] = await Promise.allSettled([
-      fetchPaymentsFromApi(),
-      fetchOrdersFromApi(),
-      fetchPaymentConfigFromApi(),
-    ]);
+    const [paymentsResult, ordersResult, paymentConfigResult] =
+      await Promise.allSettled([
+        fetchPaymentsFromApi(),
+        fetchOrdersFromApi(),
+        fetchPaymentConfigFromApi(),
+      ]);
 
     if (paymentsResult.status === "fulfilled") {
       setPayments((prev) => mergePayments(prev, paymentsResult.value));
@@ -322,8 +332,14 @@ export default function BillingPage() {
 
     if (paymentConfigResult.status === "fulfilled") {
       setPaymentConfig({
-        upiId: normalizeText(paymentConfigResult.value?.upiId, MAX_UPI_ID_LENGTH),
-        payeeName: normalizeText(paymentConfigResult.value?.payeeName, MAX_PAYEE_NAME_LENGTH),
+        upiId: normalizeText(
+          paymentConfigResult.value?.upiId,
+          MAX_UPI_ID_LENGTH,
+        ),
+        payeeName: normalizeText(
+          paymentConfigResult.value?.payeeName,
+          MAX_PAYEE_NAME_LENGTH,
+        ),
       });
     }
   };
@@ -332,13 +348,27 @@ export default function BillingPage() {
     const timeoutId = window.setTimeout(() => {
       loadData();
     }, 0);
-    const intervalId = window.setInterval(loadData, DASHBOARD_REFRESH_INTERVAL_MS);
+    const intervalId = window.setInterval(
+      loadData,
+      DASHBOARD_REFRESH_INTERVAL_MS,
+    );
 
     return () => {
       window.clearTimeout(timeoutId);
       window.clearInterval(intervalId);
     };
   }, []);
+
+  // Auto-refresh payments with configurable interval
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const interval = setInterval(() => {
+      loadData();
+    }, refreshInterval * 1000);
+
+    return () => clearInterval(interval);
+  }, [autoRefresh, refreshInterval]);
 
   useEffect(() => {
     localStorage.setItem(PAYMENTS_CACHE_KEY, JSON.stringify(payments));
@@ -372,7 +402,9 @@ export default function BillingPage() {
         customerMobile: normalizedOrder.customerMobile,
         tableNo: normalizedOrder.tableNo,
         paymentMethod: normalizedOrder.paymentMethod,
-        status: mapOrderPaymentStatusToBillingStatus(normalizedOrder.paymentStatus),
+        status: mapOrderPaymentStatusToBillingStatus(
+          normalizedOrder.paymentStatus,
+        ),
         amount: normalizedOrder.total,
         timestamp: normalizeDate(
           normalizedOrder.completedAt ||
@@ -392,10 +424,28 @@ export default function BillingPage() {
   }, [ordersById, payments]);
 
   const filteredPayments = useMemo(() => {
-    if (!STATUS_FILTER_OPTIONS.includes(statusFilter)) return reconciledRows;
-    if (statusFilter === "All") return reconciledRows;
-    return reconciledRows.filter((payment) => payment.status === statusFilter);
-  }, [reconciledRows, statusFilter]);
+    let filtered = reconciledRows;
+
+    if (
+      STATUS_FILTER_OPTIONS.includes(statusFilter) &&
+      statusFilter !== "All"
+    ) {
+      filtered = filtered.filter((payment) => payment.status === statusFilter);
+    }
+
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(
+        (payment) =>
+          payment.id.toLowerCase().includes(query) ||
+          normalizeText(payment.orderId).toLowerCase().includes(query) ||
+          normalizeText(payment.customerName).toLowerCase().includes(query) ||
+          payment.customerMobile.includes(query),
+      );
+    }
+
+    return filtered;
+  }, [reconciledRows, statusFilter, searchQuery]);
 
   const stats = useMemo(() => {
     const successPayments = reconciledRows.filter(
@@ -403,7 +453,7 @@ export default function BillingPage() {
     );
     const totalAmount = successPayments.reduce(
       (sum, payment) => sum + Number(payment.amount || 0),
-      0
+      0,
     );
     const today = new Date().toDateString();
     const todayAmount = successPayments
@@ -445,8 +495,7 @@ export default function BillingPage() {
             paymentMethod,
             status: nextStatus,
             timestamp: new Date().toISOString(),
-            transactionId:
-              nextStatus === "success" ? `COD-${Date.now()}` : "",
+            transactionId: nextStatus === "success" ? `COD-${Date.now()}` : "",
             items: Array.isArray(matchingOrder?.items)
               ? matchingOrder.items.map((item) => `${item.name} x${item.qty}`)
               : [],
@@ -492,7 +541,10 @@ export default function BillingPage() {
 
   const saveConfig = () => {
     const upiId = normalizeText(paymentConfig.upiId, MAX_UPI_ID_LENGTH);
-    const payeeName = normalizeText(paymentConfig.payeeName, MAX_PAYEE_NAME_LENGTH);
+    const payeeName = normalizeText(
+      paymentConfig.payeeName,
+      MAX_PAYEE_NAME_LENGTH,
+    );
     const errors = {
       upiId: "",
       payeeName: "",
@@ -526,7 +578,10 @@ export default function BillingPage() {
 
   const paymentQrUrl = useMemo(() => {
     const upiId = normalizeText(paymentConfig.upiId, MAX_UPI_ID_LENGTH);
-    const payeeName = normalizeText(paymentConfig.payeeName, MAX_PAYEE_NAME_LENGTH);
+    const payeeName = normalizeText(
+      paymentConfig.payeeName,
+      MAX_PAYEE_NAME_LENGTH,
+    );
     if (!isValidUpiId(upiId) || payeeName.length < 2) return "upi://pay";
     return createUpiUrl(upiId, payeeName, 1);
   }, [paymentConfig]);
@@ -535,7 +590,9 @@ export default function BillingPage() {
     <div className="min-h-screen bg-gray-100 p-6">
       <div className="mx-auto max-w-7xl space-y-6">
         <div className="rounded-xl bg-white p-6 shadow">
-          <h1 className="text-2xl font-bold text-gray-900">Billing & Payments</h1>
+          <h1 className="text-2xl font-bold text-gray-900">
+            Billing & Payments
+          </h1>
           <p className="mt-1 text-sm text-gray-600">
             All users pay using this same restaurant QR. Every payment is listed
             below.
@@ -579,7 +636,9 @@ export default function BillingPage() {
                 placeholder="Payee name"
               />
               {configErrors.upiId && (
-                <p className="-mt-1 text-xs font-medium text-red-600">{configErrors.upiId}</p>
+                <p className="-mt-1 text-xs font-medium text-red-600">
+                  {configErrors.upiId}
+                </p>
               )}
               {configErrors.payeeName && (
                 <p className="-mt-1 text-xs font-medium text-red-600">
@@ -596,7 +655,9 @@ export default function BillingPage() {
           </div>
 
           <div className="rounded-xl bg-white p-6 shadow">
-            <p className="text-sm font-medium text-gray-700">Active QR Preview</p>
+            <p className="text-sm font-medium text-gray-700">
+              Active QR Preview
+            </p>
             <div className="mt-3 flex justify-center rounded-lg border p-4">
               <QRCode value={paymentQrUrl} size={150} />
             </div>
@@ -634,23 +695,47 @@ export default function BillingPage() {
         </div>
 
         <div className="rounded-xl bg-white p-6 shadow">
-          <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">
-              Payment Transactions
-            </h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-4">
+            Payment Transactions
+          </h2>
+
+          {/* Auto-Refresh Toggle */}
+          <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-lg mb-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={autoRefresh}
+                onChange={(e) => setAutoRefresh(e.target.checked)}
+                className="w-4 h-4"
+              />
+              <span className="text-sm text-gray-700">Auto-refresh every</span>
+            </label>
+            <select
+              value={refreshInterval}
+              onChange={(e) => setRefreshInterval(Number(e.target.value))}
+              disabled={!autoRefresh}
+              className="px-2 py-1 text-sm border rounded disabled:opacity-50"
+            >
+              <option value={10}>10 seconds</option>
+              <option value={20}>20 seconds</option>
+              <option value={30}>30 seconds</option>
+              <option value={60}>60 seconds</option>
+            </select>
+            <span className="text-xs text-gray-500">
+              {autoRefresh ? "🟢 Live" : "⚪ Paused"}
+            </span>
+          </div>
+
+          {/* Search & Filter Section */}
+          <div className="flex flex-col gap-3 mb-4">
             <div className="flex flex-wrap items-center gap-2">
-              {lastSyncedAt ? (
-                <span className="text-xs text-gray-500">
-                  Last synced: {lastSyncedAt}
-                </span>
-              ) : null}
-              <button
-                type="button"
-                onClick={loadData}
-                className="rounded-lg border px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-100"
-              >
-                Refresh
-              </button>
+              <input
+                type="text"
+                placeholder="Search by Payment ID, Order ID, Customer, or Mobile..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="flex-1 min-w-[200px] px-3 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
               <select
                 value={statusFilter}
                 onChange={(e) => {
@@ -659,14 +744,31 @@ export default function BillingPage() {
                     setStatusFilter(nextValue);
                   }
                 }}
-                className="rounded-lg border px-3 py-2 text-sm"
+                className="px-3 py-2 text-sm border rounded-lg"
               >
-                <option value="All">All</option>
+                <option value="All">All Status</option>
                 <option value="success">Success</option>
                 <option value="pending">Pending</option>
                 <option value="failed">Failed</option>
               </select>
+              <button
+                type="button"
+                onClick={loadData}
+                className="rounded-lg border px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100"
+              >
+                Refresh Now
+              </button>
             </div>
+            {searchQuery && (
+              <div className="text-xs text-gray-500">
+                Found {filteredPayments.length} payment(s)
+              </div>
+            )}
+            {lastSyncedAt ? (
+              <span className="text-xs text-gray-500">
+                Last synced: {lastSyncedAt}
+              </span>
+            ) : null}
           </div>
 
           {!isLoading && filteredPayments.length === 0 ? (
@@ -709,110 +811,130 @@ export default function BillingPage() {
                 </thead>
                 <tbody className="divide-y divide-gray-100">
                   {filteredPayments.map((payment) => {
-                    const matchingOrder = ordersById[String(payment.orderId || "")] || null;
-                    const invoicePayload = buildInvoiceFromPayment(payment, matchingOrder);
+                    const matchingOrder =
+                      ordersById[String(payment.orderId || "")] || null;
+                    const invoicePayload = buildInvoiceFromPayment(
+                      payment,
+                      matchingOrder,
+                    );
 
                     return (
-                    <tr key={payment.id}>
-                      <td className="px-3 py-2 text-gray-700">{payment.id}</td>
-                      <td className="px-3 py-2 text-gray-700">
-                        {payment.orderId}
-                      </td>
-                      <td className="px-3 py-2 text-gray-700">
-                        {payment.tableNo || "NA"}
-                      </td>
-                      <td className="px-3 py-2 text-gray-700">
-                        {payment.paymentMethod}
-                        {payment.isSynthetic ? " (order)" : ""}
-                      </td>
-                      <td className="px-3 py-2 text-gray-700">
-                        Rs. {Number(payment.amount || 0).toFixed(2)}
-                      </td>
-                      <td className="px-3 py-2">
-                        <span
-                          className={`rounded px-2 py-1 text-xs font-medium ${
-                            payment.status === "success"
-                              ? "bg-green-100 text-green-700"
-                              : payment.status === "pending"
-                              ? "bg-yellow-100 text-yellow-700"
-                              : "bg-red-100 text-red-700"
-                          }`}
-                        >
-                          {payment.status}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-gray-700">
-                        {new Date(normalizeDate(payment.timestamp)).toLocaleString()}
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="flex gap-2">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const success = printInvoice(invoicePayload);
-                              if (!success) {
-                                alert("Please allow popups to print invoice.");
-                              }
-                            }}
-                            className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-100"
+                      <tr key={payment.id}>
+                        <td className="px-3 py-2 text-gray-700">
+                          {payment.id}
+                        </td>
+                        <td className="px-3 py-2 text-gray-700">
+                          {payment.orderId}
+                        </td>
+                        <td className="px-3 py-2 text-gray-700">
+                          {payment.tableNo || "NA"}
+                        </td>
+                        <td className="px-3 py-2 text-gray-700">
+                          {payment.paymentMethod}
+                          {payment.isSynthetic ? " (order)" : ""}
+                        </td>
+                        <td className="px-3 py-2 text-gray-700">
+                          Rs. {Number(payment.amount || 0).toFixed(2)}
+                        </td>
+                        <td className="px-3 py-2">
+                          <span
+                            className={`rounded px-2 py-1 text-xs font-medium ${
+                              payment.status === "success"
+                                ? "bg-green-100 text-green-700"
+                                : payment.status === "pending"
+                                  ? "bg-yellow-100 text-yellow-700"
+                                  : "bg-red-100 text-red-700"
+                            }`}
                           >
-                            Print
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => downloadInvoice(invoicePayload)}
-                            className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-100"
-                          >
-                            Download
-                          </button>
-                        </div>
-                      </td>
-                      <td className="px-3 py-2">
-                        <div className="flex flex-wrap gap-2">
-                          {payment.status !== "success" ? (
+                            {payment.status}
+                          </span>
+                        </td>
+                        <td className="px-3 py-2 text-gray-700">
+                          {new Date(
+                            normalizeDate(payment.timestamp),
+                          ).toLocaleString()}
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex gap-2">
                             <button
                               type="button"
                               onClick={() => {
-                                void handleReconcilePayment(payment, "success");
+                                const success = printInvoice(invoicePayload);
+                                if (!success) {
+                                  alert(
+                                    "Please allow popups to print invoice.",
+                                  );
+                                }
                               }}
-                              disabled={isReconcilingId === payment.id}
-                              className="rounded border border-green-200 px-2 py-1 text-xs text-green-700 hover:bg-green-50 disabled:opacity-60"
+                              className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-100"
                             >
-                              {isReconcilingId === payment.id
-                                ? "Saving..."
-                                : payment.paymentMethod === "Cash"
-                                  ? "Mark Collected"
-                                  : "Mark Paid"}
+                              Print
                             </button>
-                          ) : null}
-                          {payment.status !== "failed" ? (
                             <button
                               type="button"
-                              onClick={() => {
-                                void handleReconcilePayment(payment, "failed");
-                              }}
-                              disabled={isReconcilingId === payment.id}
-                              className="rounded border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-60"
+                              onClick={() => downloadInvoice(invoicePayload)}
+                              className="rounded border border-gray-300 px-2 py-1 text-xs text-gray-700 hover:bg-gray-100"
                             >
-                              Mark Failed
+                              Download
                             </button>
-                          ) : null}
-                          {payment.status !== "pending" ? (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                void handleReconcilePayment(payment, "pending");
-                              }}
-                              disabled={isReconcilingId === payment.id}
-                              className="rounded border border-yellow-200 px-2 py-1 text-xs text-yellow-700 hover:bg-yellow-50 disabled:opacity-60"
-                            >
-                              Mark Pending
-                            </button>
-                          ) : null}
-                        </div>
-                      </td>
-                    </tr>
-                  )})}
+                          </div>
+                        </td>
+                        <td className="px-3 py-2">
+                          <div className="flex flex-wrap gap-2">
+                            {payment.status !== "success" ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handleReconcilePayment(
+                                    payment,
+                                    "success",
+                                  );
+                                }}
+                                disabled={isReconcilingId === payment.id}
+                                className="rounded border border-green-200 px-2 py-1 text-xs text-green-700 hover:bg-green-50 disabled:opacity-60"
+                              >
+                                {isReconcilingId === payment.id
+                                  ? "Saving..."
+                                  : payment.paymentMethod === "Cash"
+                                    ? "Mark Collected"
+                                    : "Mark Paid"}
+                              </button>
+                            ) : null}
+                            {payment.status !== "failed" ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handleReconcilePayment(
+                                    payment,
+                                    "failed",
+                                  );
+                                }}
+                                disabled={isReconcilingId === payment.id}
+                                className="rounded border border-red-200 px-2 py-1 text-xs text-red-700 hover:bg-red-50 disabled:opacity-60"
+                              >
+                                Mark Failed
+                              </button>
+                            ) : null}
+                            {payment.status !== "pending" ? (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  void handleReconcilePayment(
+                                    payment,
+                                    "pending",
+                                  );
+                                }}
+                                disabled={isReconcilingId === payment.id}
+                                className="rounded border border-yellow-200 px-2 py-1 text-xs text-yellow-700 hover:bg-yellow-50 disabled:opacity-60"
+                              >
+                                Mark Pending
+                              </button>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
@@ -822,4 +944,3 @@ export default function BillingPage() {
     </div>
   );
 }
-

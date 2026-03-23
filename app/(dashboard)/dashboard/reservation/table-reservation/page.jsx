@@ -170,6 +170,8 @@ export default function TableReservationPage() {
   const [filterStatus, setFilterStatus] = useState("all");
   const [search, setSearch] = useState("");
   const [notification, setNotification] = useState(null);
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [refreshInterval, setRefreshInterval] = useState(30);
 
   const [data, setData] = useState(() => getInitialReservations());
 
@@ -183,6 +185,22 @@ export default function TableReservationPage() {
     status: "Confirmed",
     notes: "",
   });
+
+  // ================= AUTO-REFRESH =================
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const interval = setInterval(() => {
+      // Refresh data from localStorage (simulating live updates)
+      const savedData = localStorage.getItem("tableReservations");
+      if (savedData) {
+        try {
+          const parsedData = JSON.parse(savedData);
+          setData(Array.isArray(parsedData) ? parsedData : []);
+        } catch {}
+      }
+    }, refreshInterval * 1000);
+    return () => clearInterval(interval);
+  }, [autoRefresh, refreshInterval]);
 
   // ================= LOCALSTORAGE =================
   useEffect(() => {
@@ -620,6 +638,38 @@ export default function TableReservationPage() {
 
         {/* SEARCH & FILTER */}
         <div className="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 mb-6">
+          <div className="flex flex-col md:flex-row gap-4 mb-4">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="autoRefreshToggle"
+                checked={autoRefresh}
+                onChange={(e) => setAutoRefresh(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300"
+              />
+              <label htmlFor="autoRefreshToggle" className="text-sm font-medium text-gray-700">
+                Auto-Refresh
+              </label>
+            </div>
+            {autoRefresh && (
+              <select
+                value={refreshInterval}
+                onChange={(e) => setRefreshInterval(Number(e.target.value))}
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm"
+              >
+                <option value={10}>Every 10s</option>
+                <option value={20}>Every 20s</option>
+                <option value={30}>Every 30s</option>
+                <option value={60}>Every 60s</option>
+              </select>
+            )}
+            <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+              autoRefresh ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-600"
+            }`}>
+              {autoRefresh ? "🟢 Live" : "⚪ Paused"}
+            </span>
+          </div>
+
           <div className="flex flex-col md:flex-row gap-4">
             <div className="relative flex-1">
               <Search

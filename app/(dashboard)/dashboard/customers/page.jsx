@@ -1174,7 +1174,9 @@ const normalizeText = (value, maxLength = 120) =>
     .slice(0, maxLength);
 
 const normalizeMobile = (value) => {
-  const digits = String(value || "").replace(/\D/g, "").slice(0, 10);
+  const digits = String(value || "")
+    .replace(/\D/g, "")
+    .slice(0, 10);
   return /^\d{10}$/.test(digits) ? digits : "-";
 };
 
@@ -1251,7 +1253,7 @@ const deriveCustomersFromOrders = (orders) => {
 
     const name = normalizeText(order.customerName, 80) || "Walk-in";
     const mobile = normalizeMobile(
-      order.customerMobile || order.mobile || order.phone
+      order.customerMobile || order.mobile || order.phone,
     );
     const key = `${name.toLowerCase()}|${mobile}`;
 
@@ -1780,9 +1782,15 @@ export default function Page() {
 
     return customers.filter(
       (customer) =>
-        String(customer.name || "").toLowerCase().includes(query) ||
-        String(customer.food || "").toLowerCase().includes(query) ||
-        String(customer.status || "").toLowerCase().includes(query),
+        String(customer.name || "")
+          .toLowerCase()
+          .includes(query) ||
+        String(customer.food || "")
+          .toLowerCase()
+          .includes(query) ||
+        String(customer.status || "")
+          .toLowerCase()
+          .includes(query),
     );
   }, [customers, search]);
 
@@ -1792,7 +1800,8 @@ export default function Page() {
     return (
       customers.find(
         (customer) =>
-          customer.name === selected.name && customer.mobile === selected.mobile,
+          customer.name === selected.name &&
+          customer.mobile === selected.mobile,
       ) || selected
     );
   }, [customers, selected]);
@@ -1805,7 +1814,9 @@ export default function Page() {
     if (!selectedCustomer) return [];
     if (selectedOrderFilter === "All") return availableOrders;
     if (selectedOrderFilter === "Active") {
-      return availableOrders.filter((order) => isActiveOrderStatus(order.status));
+      return availableOrders.filter((order) =>
+        isActiveOrderStatus(order.status),
+      );
     }
     if (selectedOrderFilter === "Completed") {
       return availableOrders.filter(
@@ -1985,7 +1996,9 @@ export default function Page() {
               }}
               aria-disabled={isSyncing}
               className={`rounded-lg bg-black px-4 py-2 text-sm font-medium text-white transition active:scale-[0.98] ${
-                isSyncing ? "cursor-wait opacity-80" : "cursor-pointer hover:bg-gray-800"
+                isSyncing
+                  ? "cursor-wait opacity-80"
+                  : "cursor-pointer hover:bg-gray-800"
               }`}
             >
               {isSyncing ? "Syncing..." : "Sync Orders"}
@@ -1993,7 +2006,9 @@ export default function Page() {
           </div>
         </div>
         {lastSyncedAt && (
-          <p className="mt-2 text-xs text-gray-500">Last synced at: {lastSyncedAt}</p>
+          <p className="mt-2 text-xs text-gray-500">
+            Last synced at: {lastSyncedAt}
+          </p>
         )}
       </div>
 
@@ -2098,7 +2113,9 @@ export default function Page() {
             <div className="mb-2 flex flex-wrap items-center justify-between gap-3">
               <p className="text-sm font-semibold">
                 Order History
-                {selectedOrderFilter !== "All" ? ` (${selectedOrderFilter})` : ""}
+                {selectedOrderFilter !== "All"
+                  ? ` (${selectedOrderFilter})`
+                  : ""}
               </p>
               <div className="flex flex-wrap gap-2">
                 {["All", "Active", "Completed"].map((status) => (

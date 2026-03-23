@@ -180,6 +180,53 @@ const createTestOrderPayload = () => {
   };
 };
 
+// Order Timeline Component
+const OrderTimeline = ({ order }) => {
+  const timeline = [
+    { label: "Placed", completed: !!order.timeIso, time: order.timeIso },
+    {
+      label: "Accepted",
+      completed: order.status !== "New Order",
+      time: order.acceptedAt,
+    },
+    {
+      label: "Preparing",
+      completed:
+        order.status === "Preparing" || order.status === "Order Completed",
+      time: order.preparingAt,
+    },
+    {
+      label: "Completed",
+      completed: order.status === "Order Completed",
+      time: order.completedAt,
+    },
+  ];
+
+  return (
+    <div className="flex items-center gap-2 mt-3 text-xs">
+      {timeline.map((step, idx) => (
+        <div key={step.label} className="flex items-center">
+          <div
+            className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-semibold ${
+              step.completed
+                ? "bg-green-500 text-white"
+                : "bg-gray-300 text-gray-600"
+            }`}
+          >
+            ✓
+          </div>
+          {idx < timeline.length - 1 && (
+            <div
+              className={`w-8 h-0.5 mx-1 ${step.completed ? "bg-green-500" : "bg-gray-300"}`}
+            />
+          )}
+        </div>
+      ))}
+      <span className="ml-1 text-gray-600">{order.status}</span>
+    </div>
+  );
+};
+
 export default function Orders() {
   const [orderType, setOrderType] = useState("Takeaway");
   const [status, setStatus] = useState("New Order");
@@ -188,6 +235,9 @@ export default function Orders() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [refreshInterval, setRefreshInterval] = useState(30);
 
   const loadOrders = useCallback(async () => {
     setLoading(true);
@@ -230,13 +280,35 @@ export default function Orders() {
     };
   }, [loadOrders]);
 
-  const filteredOrders = useMemo(
-    () =>
-      orders.filter(
-        (order) => order.type === orderType && order.status === status,
-      ),
-    [orders, orderType, status],
-  );
+  // Auto-refresh orders every 30 seconds
+  useEffect(() => {
+    if (!autoRefresh) return;
+
+    const interval = setInterval(() => {
+      loadOrders();
+    }, refreshInterval * 1000);
+
+    return () => clearInterval(interval);
+  }, [autoRefresh, refreshInterval, loadOrders]);
+
+  const filteredOrders = useMemo(() => {
+    let filtered = orders.filter(
+      (order) => order.type === orderType && order.status === status,
+    );
+
+    // Apply search filter
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase().trim();
+      filtered = filtered.filter(
+        (order) =>
+          order.id.toLowerCase().includes(query) ||
+          order.name.toLowerCase().includes(query) ||
+          order.customerMobile.includes(query),
+      );
+    }
+
+    return filtered;
+  }, [orders, orderType, status, searchQuery]);
 
   const getTotal = (items) =>
     (Array.isArray(items) ? items : []).reduce(
@@ -317,22 +389,72 @@ export default function Orders() {
   return (
     <div className="min-h-screen bg-gray-100 p-4 sm:p-6">
       <div className="bg-white rounded-2xl shadow p-4 sm:p-6">
-        <div className="mb-4 flex flex-wrap items-center gap-2">
-          <button
-            onClick={loadOrders}
-            disabled={loading || submitting}
-            className="px-4 py-2 rounded-lg border text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60"
-          >
-            Refresh Orders
-          </button>
-          <button
-            onClick={createTestOrder}
-            disabled={loading || submitting}
-            className="px-4 py-2 rounded-lg bg-blue-600 text-sm text-white hover:bg-blue-700 disabled:opacity-60"
-          >
-            Add Test Order
-          </button>
-          {error ? <span className="text-sm text-red-600">{error}</span> : null}
+        <div className="mb-6 space-y-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={loadOrders}
+              disabled={loading || submitting}
+              className="px-4 py-2 rounded-lg border text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-60"
+            >
+              Refresh Orders
+            </button>
+            <button
+              onClick={createTestOrder}
+              disabled={loading || submitting}
+              className="px-4 py-2 rounded-lg bg-blue-600 text-sm text-white hover:bg-blue-700 disabled:opacity-60"
+            >
+              Add Test Order
+            </button>
+            {error ? (
+              <span className="text-sm text-red-600">{error}</span>
+            ) : null}
+          </div>
+
+          {/* Auto-Refresh Toggle */}
+          <div className="flex items-center gap-3 bg-gray-50 p-3 rounded-lg">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={autoRefresh}
+                onChange={(e) => setAutoRefresh(e.target.checked)}
+                className="w-4 h-4"
+              />
+              <span className="text-sm text-gray-700">Auto-refresh every</span>
+            </label>
+            <select
+              value={refreshInterval}
+              onChange={(e) => setRefreshInterval(Number(e.target.value))}
+              disabled={!autoRefresh}
+              className="px-2 py-1 text-sm border rounded disabled:opacity-50"
+            >
+              <option value={10}>10 seconds</option>
+              <option value={20}>20 seconds</option>
+              <option value={30}>30 seconds</option>
+              <option value={60}>60 seconds</option>
+            </select>
+            <span className="text-xs text-gray-500">
+              {autoRefresh ? "🟢 Live" : "⚪ Paused"}
+            </span>
+          </div>
+
+          {/* Search & Filter Section */}
+          <div className="flex flex-col gap-2">
+            <label className="text-sm font-medium text-gray-700">
+              Search Orders
+            </label>
+            <input
+              type="text"
+              placeholder="Search by Order ID, Customer Name, or Mobile..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="px-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            {searchQuery && (
+              <div className="text-xs text-gray-500">
+                Found {filteredOrders.length} order(s)
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="flex gap-3 overflow-x-auto pb-3">
@@ -409,6 +531,9 @@ export default function Orders() {
                         </span>
                       ) : null}
                     </div>
+
+                    {/* Order Timeline */}
+                    <OrderTimeline order={order} />
                   </div>
 
                   <button

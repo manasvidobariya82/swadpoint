@@ -27,14 +27,13 @@ const sanitizeText = (value, maxLength) =>
     .slice(0, maxLength);
 
 const sanitizeMenuNameInput = (value) =>
-  String(value || "").replace(/\d+/g, "").slice(0, MAX_ITEM_NAME_LENGTH);
+  String(value || "")
+    .replace(/\d+/g, "")
+    .slice(0, MAX_ITEM_NAME_LENGTH);
 
 const isValidMenuItemName = (value) => {
   const name = sanitizeText(value, MAX_ITEM_NAME_LENGTH);
-  return (
-    name.length >= 2 &&
-    MENU_NAME_ALLOWED_CHARACTERS_REGEX.test(name)
-  );
+  return name.length >= 2 && MENU_NAME_ALLOWED_CHARACTERS_REGEX.test(name);
 };
 
 const normalizeCategory = (value) => {
@@ -53,7 +52,10 @@ const sanitizeMenuItem = (item, index, idPrefix = "menu-item") => {
   if (!item || typeof item !== "object") return null;
 
   const name = sanitizeText(item.name, MAX_ITEM_NAME_LENGTH);
-  const description = sanitizeText(item.description, MAX_ITEM_DESCRIPTION_LENGTH);
+  const description = sanitizeText(
+    item.description,
+    MAX_ITEM_DESCRIPTION_LENGTH,
+  );
   const category = normalizeCategory(item.category);
   const price = toNumber(item.price);
 
@@ -71,7 +73,9 @@ const sanitizeMenuItem = (item, index, idPrefix = "menu-item") => {
 };
 
 const buildDuplicateKey = (name, category) =>
-  `${String(name || "").trim().toLowerCase()}|${normalizeCategory(category)}`;
+  `${String(name || "")
+    .trim()
+    .toLowerCase()}|${normalizeCategory(category)}`;
 
 const validateMenuForm = ({ form, menuItems, editingId }) => {
   const errors = { ...EMPTY_FORM_ERRORS };
@@ -79,7 +83,7 @@ const validateMenuForm = ({ form, menuItems, editingId }) => {
   const name = sanitizeText(form.name, MAX_ITEM_NAME_LENGTH);
   const description = sanitizeText(
     form.description,
-    MAX_ITEM_DESCRIPTION_LENGTH
+    MAX_ITEM_DESCRIPTION_LENGTH,
   );
   const category = normalizeCategory(form.category);
   const price = toNumber(form.price);
@@ -96,7 +100,9 @@ const validateMenuForm = ({ form, menuItems, editingId }) => {
     errors.price = `Price must be between 1 and ${MAX_ITEM_PRICE}.`;
   }
 
-  if (String(form.description || "").trim().length > MAX_ITEM_DESCRIPTION_LENGTH) {
+  if (
+    String(form.description || "").trim().length > MAX_ITEM_DESCRIPTION_LENGTH
+  ) {
     errors.description = `Description can be maximum ${MAX_ITEM_DESCRIPTION_LENGTH} characters.`;
   }
 
@@ -108,7 +114,7 @@ const validateMenuForm = ({ form, menuItems, editingId }) => {
   const isDuplicate = (Array.isArray(menuItems) ? menuItems : []).some(
     (item) =>
       item.id !== editingId &&
-      buildDuplicateKey(item.name, item.category) === candidateKey
+      buildDuplicateKey(item.name, item.category) === candidateKey,
   );
   if (name && isDuplicate) {
     errors.name = "Same item already exists in this category.";
@@ -184,7 +190,11 @@ export default function AdminMenuPage() {
     return queryItems.length > 0 ? "query" : "server";
   });
   const [activeCategory, setActiveCategory] = useState("All");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [refreshInterval, setRefreshInterval] = useState(30);
 
+  // Initial load and server sync
   useEffect(() => {
     let isCancelled = false;
     if (menuSource === "query") {
@@ -210,6 +220,17 @@ export default function AdminMenuPage() {
       isCancelled = true;
     };
   }, [menuSource]);
+
+  // Auto-refresh effect
+  useEffect(() => {
+    if (!autoRefresh || menuSource === "query") return;
+    const interval = setInterval(() => {
+      fetchMenuFromServer()
+        .then((serverMenu) => setMenuItems(serverMenu))
+        .catch(() => {});
+    }, refreshInterval * 1000);
+    return () => clearInterval(interval);
+  }, [autoRefresh, refreshInterval, menuSource]);
 
   const persistMenu = (nextMenu) => {
     const normalizedMenu = sanitizeMenuItems(nextMenu);
@@ -249,7 +270,7 @@ export default function AdminMenuPage() {
               price: normalized.price,
               category: normalized.category,
             }
-          : item
+          : item,
       );
       persistMenu(updated);
       resetForm();
@@ -288,16 +309,26 @@ export default function AdminMenuPage() {
     }
   };
 
-  const filteredItems = menuItems.filter((item) =>
-    activeCategory === "All"
-      ? true
-      : normalizeCategory(item.category) === activeCategory
-  );
+  const filteredItems = menuItems.filter((item) => {
+    const categoryMatch =
+      activeCategory === "All" ||
+      normalizeCategory(item.category) === activeCategory;
+    if (!categoryMatch) return false;
+
+    if (!searchQuery.trim()) return true;
+
+    const query = searchQuery.toLowerCase();
+    return (
+      item.name.toLowerCase().includes(query) ||
+      item.description.toLowerCase().includes(query) ||
+      normalizeCategory(item.category).toLowerCase().includes(query)
+    );
+  });
 
   const groupedItems = MENU_CATEGORIES.map((category) => ({
     category,
     items: filteredItems.filter(
-      (item) => normalizeCategory(item.category) === category
+      (item) => normalizeCategory(item.category) === category,
     ),
   })).filter((group) => group.items.length > 0);
 
@@ -326,7 +357,10 @@ export default function AdminMenuPage() {
               value={form.name}
               maxLength={MAX_ITEM_NAME_LENGTH}
               onChange={(e) => {
-                setForm({ ...form, name: sanitizeMenuNameInput(e.target.value) });
+                setForm({
+                  ...form,
+                  name: sanitizeMenuNameInput(e.target.value),
+                });
                 if (formErrors.name) {
                   setFormErrors((prev) => ({ ...prev, name: "" }));
                 }
@@ -348,7 +382,10 @@ export default function AdminMenuPage() {
               value={form.price}
               onChange={(e) => {
                 const nextValue = e.target.value;
-                if (nextValue === "" || /^\d{0,6}(\.\d{0,2})?$/.test(nextValue)) {
+                if (
+                  nextValue === "" ||
+                  /^\d{0,6}(\.\d{0,2})?$/.test(nextValue)
+                ) {
                   setForm({ ...form, price: nextValue });
                   if (formErrors.price) {
                     setFormErrors((prev) => ({ ...prev, price: "" }));
@@ -423,7 +460,64 @@ export default function AdminMenuPage() {
         </div>
 
         <div className="rounded-xl bg-white p-6 shadow">
-          <h2 className="text-lg font-semibold text-gray-900">Menu Items</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">Menu Items</h2>
+            <div className="flex items-center gap-2">
+              <span
+                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                  autoRefresh
+                    ? "bg-green-100 text-green-800"
+                    : "bg-gray-100 text-gray-600"
+                }`}
+              >
+                {autoRefresh ? "🟢 Live" : "⚪ Paused"}
+              </span>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-4 md:grid-cols-3">
+            <div className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                id="autoRefreshToggle"
+                checked={autoRefresh}
+                onChange={(e) => setAutoRefresh(e.target.checked)}
+                className="h-4 w-4 rounded border-gray-300"
+              />
+              <label
+                htmlFor="autoRefreshToggle"
+                className="text-sm font-medium text-gray-700"
+              >
+                Auto-Refresh
+              </label>
+            </div>
+            {autoRefresh && (
+              <select
+                value={refreshInterval}
+                onChange={(e) => setRefreshInterval(Number(e.target.value))}
+                className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm"
+              >
+                <option value={10}>Every 10s</option>
+                <option value={20}>Every 20s</option>
+                <option value={30}>Every 30s</option>
+                <option value={60}>Every 60s</option>
+              </select>
+            )}
+            <input
+              type="text"
+              placeholder="Search items by name, description, or category..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+            />
+          </div>
+          {searchQuery && (
+            <p className="mt-2 text-xs text-gray-600">
+              Found {filteredItems.length} item
+              {filteredItems.length !== 1 ? "s" : ""}
+            </p>
+          )}
+
           <div className="mt-4 flex flex-wrap gap-2">
             {CATEGORY_FILTERS.map((category) => (
               <button
@@ -459,7 +553,9 @@ export default function AdminMenuPage() {
                       className="flex flex-col justify-between gap-3 rounded-lg border p-4 md:flex-row md:items-center"
                     >
                       <div>
-                        <p className="font-semibold text-gray-900">{item.name}</p>
+                        <p className="font-semibold text-gray-900">
+                          {item.name}
+                        </p>
                         <p className="text-sm text-gray-500">
                           {item.description || "No description"}
                         </p>

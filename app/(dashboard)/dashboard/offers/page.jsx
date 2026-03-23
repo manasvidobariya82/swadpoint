@@ -1,5 +1,5 @@
 "use client";
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Check, Zap } from "lucide-react";
 import { motion } from "framer-motion";
 
@@ -87,16 +87,40 @@ const OffersPage = () => {
         active: false,
         badgeColor: "bg-blue-500",
       },
-    ])
+    ]),
   );
+
+  const [searchQuery, setSearchQuery] = useState("");
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [refreshInterval, setRefreshInterval] = useState(30);
+
+  // Auto-refresh effect (for future API integration)
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const interval = setInterval(() => {
+      // Future: Fetch offers from API/server
+      // setOffers(fetchedOffers);
+    }, refreshInterval * 1000);
+    return () => clearInterval(interval);
+  }, [autoRefresh, refreshInterval]);
+
+  const filteredOffers = offers.filter((offer) => {
+    if (!searchQuery.trim()) return true;
+    const query = searchQuery.toLowerCase();
+    return (
+      offer.title.toLowerCase().includes(query) ||
+      offer.desc.toLowerCase().includes(query) ||
+      offer.points.some((p) => p.toLowerCase().includes(query))
+    );
+  });
 
   const toggleOffer = (index) => {
     if (!Number.isInteger(index) || index < 0 || index >= offers.length) return;
 
     setOffers((prev) =>
       prev.map((offer, offerIndex) =>
-        offerIndex === index ? { ...offer, active: !offer.active } : offer
-      )
+        offerIndex === index ? { ...offer, active: !offer.active } : offer,
+      ),
     );
   };
 
@@ -118,14 +142,75 @@ const OffersPage = () => {
         Boost sales by attracting customers with focused deals.
       </p>
 
-      <div className="mb-10 grid grid-cols-3 gap-4">
-        <StatCard title="Active Offers" value={offers.filter((o) => o.active).length} />
+      <div className="mb-10 grid gap-4 md:grid-cols-3">
+        <div className="rounded-xl border bg-white p-4 shadow">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-3xl font-bold text-blue-600">
+                {offers.filter((o) => o.active).length}
+              </h2>
+              <p className="text-sm text-gray-500">Active Offers</p>
+            </div>
+            <span
+              className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                autoRefresh
+                  ? "bg-green-100 text-green-800"
+                  : "bg-gray-100 text-gray-600"
+              }`}
+            >
+              {autoRefresh ? "🟢 Live" : "⚪ Paused"}
+            </span>
+          </div>
+        </div>
         <StatCard title="Available Templates" value={offers.length} />
         <StatCard title="Avg. Order Increase" value="15-25%" />
       </div>
 
+      <div className="mb-6 grid gap-4 md:grid-cols-3">
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="autoRefreshToggle"
+            checked={autoRefresh}
+            onChange={(e) => setAutoRefresh(e.target.checked)}
+            className="h-4 w-4 rounded border-gray-300"
+          />
+          <label
+            htmlFor="autoRefreshToggle"
+            className="text-sm font-medium text-gray-700"
+          >
+            Auto-Refresh
+          </label>
+        </div>
+        {autoRefresh && (
+          <select
+            value={refreshInterval}
+            onChange={(e) => setRefreshInterval(Number(e.target.value))}
+            className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm"
+          >
+            <option value={10}>Every 10s</option>
+            <option value={20}>Every 20s</option>
+            <option value={30}>Every 30s</option>
+            <option value={60}>Every 60s</option>
+          </select>
+        )}
+        <input
+          type="text"
+          placeholder="Search offers by title or description..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          className="rounded-lg border border-gray-300 px-3 py-1.5 text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
+        />
+      </div>
+      {searchQuery && (
+        <p className="mb-4 text-xs text-gray-600">
+          Found {filteredOffers.length} offer
+          {filteredOffers.length !== 1 ? "s" : ""}
+        </p>
+      )}
+
       <div className="grid gap-6 sm:grid-cols-1 md:grid-cols-3">
-        {offers.map((offer, index) => (
+        {filteredOffers.map((offer, index) => (
           <motion.div
             key={offer.id}
             className="rounded-xl border border-gray-200 bg-white/70 p-6 shadow-xl backdrop-blur-xl transition-all hover:-translate-y-2 hover:shadow-2xl"
@@ -143,7 +228,10 @@ const OffersPage = () => {
 
             <ul className="space-y-2 text-gray-700">
               {offer.points.map((point, pointIndex) => (
-                <li key={`${offer.id}-point-${pointIndex}`} className="flex items-center gap-2">
+                <li
+                  key={`${offer.id}-point-${pointIndex}`}
+                  className="flex items-center gap-2"
+                >
                   <Check size={16} className="text-green-600" />
                   {point}
                 </li>
@@ -154,7 +242,9 @@ const OffersPage = () => {
               onClick={() => toggleOffer(index)}
               whileTap={{ scale: 0.95 }}
               className={`mt-6 flex w-full items-center justify-center gap-2 rounded-lg py-2 font-medium text-white transition-all ${
-                offer.active ? "bg-red-600 hover:bg-red-700" : "bg-green-600 hover:bg-green-700"
+                offer.active
+                  ? "bg-red-600 hover:bg-red-700"
+                  : "bg-green-600 hover:bg-green-700"
               }`}
             >
               <Zap size={18} />
